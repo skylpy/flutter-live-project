@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_live_core/flutter_live_core.dart';
 
 import '../../data/models/live_room.dart';
 import '../../data/datasources/live_chat_client.dart';
 import '../../data/models/live_chat_message.dart';
 import '../../../../core/network/api_provider.dart';
+import '../../../../core/media/live_engine_provider.dart';
 import '../controllers/live_room_controller.dart';
 
 class LiveRoomPage extends ConsumerWidget {
@@ -32,29 +34,65 @@ class LiveRoomPage extends ConsumerWidget {
   }
 }
 
-class _LiveRoomContent extends StatelessWidget {
+class _LiveRoomContent extends ConsumerStatefulWidget {
   const _LiveRoomContent({required this.room});
 
   final LiveRoom room;
+
+  @override
+  ConsumerState<_LiveRoomContent> createState() => _LiveRoomContentState();
+}
+
+class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
+  StreamSubscription<LiveEngineEvent>? _engineSubscription;
+  String? _engineStatus;
+
+  @override
+  void initState() {
+    super.initState();
+    _engineSubscription = ref.read(liveEngineProvider).events.listen((event) {
+      if (!mounted || event.message == null) return;
+      setState(() => _engineStatus = event.message);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _prepareEngine());
+  }
+
+  @override
+  void dispose() {
+    _engineSubscription?.cancel();
+    ref.read(liveEngineProvider).stop();
+    super.dispose();
+  }
+
+  Future<void> _prepareEngine() async {
+    final engine = ref.read(liveEngineProvider);
+    await engine.initialize();
+    if (!mounted) return;
+    if (widget.room.playUrl.isEmpty) {
+      setState(() => _engineStatus = '未配置播放地址 · 等待原生播放器接入');
+      return;
+    }
+    await engine.play(widget.room.playUrl);
+  }
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       child: Stack(
         children: [
-          const Positioned.fill(child: _PlayerPlaceholder()),
+          Positioned.fill(child: _PlayerPlaceholder(status: _engineStatus)),
           Positioned(
             top: 12,
             left: 16,
             right: 16,
-            child: _RoomHeader(room: room),
+            child: _RoomHeader(room: widget.room),
           ),
           const Positioned(left: 16, bottom: 102, child: _DanmakuList()),
           Positioned(
             left: 16,
             right: 16,
             bottom: 18,
-            child: _RoomInputBar(roomId: room.id.toString()),
+            child: _RoomInputBar(roomId: widget.room.id.toString()),
           ),
         ],
       ),
@@ -63,7 +101,9 @@ class _LiveRoomContent extends StatelessWidget {
 }
 
 class _PlayerPlaceholder extends StatelessWidget {
-  const _PlayerPlaceholder();
+  const _PlayerPlaceholder({this.status});
+
+  final String? status;
 
   @override
   Widget build(BuildContext context) {
@@ -86,7 +126,7 @@ class _PlayerPlaceholder extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '第二阶段接入原生播放器',
+            status ?? '媒体引擎抽象层已就绪',
             style: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
           ),
         ],

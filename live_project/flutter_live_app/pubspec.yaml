@@ -39,6 +39,8 @@ dependencies:
   dio: ^5.11.0
   shared_preferences: ^2.5.5
   web_socket_channel: ^3.0.3
+  flutter_live_core:
+    path: ../packages/flutter_live_core
 
 dev_dependencies:
   flutter_test:
