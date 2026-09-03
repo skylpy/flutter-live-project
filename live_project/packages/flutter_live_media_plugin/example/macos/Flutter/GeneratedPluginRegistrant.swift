@@ -6,9 +6,7 @@ import FlutterMacOS
 import Foundation
 
 import flutter_live_media_plugin
-import shared_preferences_foundation
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   FlutterLiveMediaPlugin.register(with: registry.registrar(forPlugin: "FlutterLiveMediaPlugin"))
-  SharedPreferencesPlugin.register(with: registry.registrar(forPlugin: "SharedPreferencesPlugin"))
 }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_live_core/flutter_live_core.dart';
+import 'package:flutter_live_media_plugin/flutter_live_media_plugin.dart';
 
 import '../../data/models/live_room.dart';
 import '../../data/datasources/live_chat_client.dart';
@@ -107,30 +108,50 @@ class _PlayerPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.live_tv,
-            color: Colors.white.withValues(alpha: 0.55),
-            size: 64,
+    return Stack(
+      children: [
+        const Positioned(
+          left: 24,
+          right: 24,
+          top: 128,
+          bottom: 176,
+          child: ClipRRect(
+            borderRadius: BorderRadius.all(Radius.circular(16)),
+            child: FlutterLiveMediaPlayerView(),
           ),
-          const SizedBox(height: 16),
-          Text(
-            '播放器区域',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.8),
-              fontSize: 18,
+        ),
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.live_tv,
+                    color: Colors.white.withValues(alpha: 0.55),
+                    size: 64,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '播放器区域',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.8),
+                      fontSize: 18,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    status ?? '媒体引擎抽象层已就绪',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            status ?? '媒体引擎抽象层已就绪',
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

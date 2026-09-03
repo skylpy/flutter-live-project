@@ -181,6 +181,13 @@ packages:
       relative: true
     source: path
     version: "0.1.0"
+  flutter_live_media_plugin:
+    dependency: "direct main"
+    description:
+      path: "../packages/flutter_live_media_plugin"
+      relative: true
+    source: path
+    version: "0.0.1"
   flutter_localizations:
     dependency: transitive
     description: flutter
