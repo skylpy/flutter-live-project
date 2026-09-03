@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     redis_port: int = 6379
     redis_db: int = 0
 
-    jwt_secret_key: str = "replace-me"
+    jwt_secret_key: str = "development-only-secret-change-me-32-chars"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 10080
 
@@ -37,6 +37,10 @@ class Settings(BaseSettings):
         user = quote_plus(self.mysql_user)
         password = quote_plus(self.mysql_password)
         return f"mysql+pymysql://{user}:{password}@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}?charset=utf8mb4"
+
+    @property
+    def redis_url(self) -> str:
+        return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
 
 
 @lru_cache

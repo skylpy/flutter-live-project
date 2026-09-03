@@ -1,10 +1,47 @@
+from typing import Optional
+
+import jwt
 from fastapi import Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.repositories.live_room_repository import LiveRoomRepository
+from app.repositories.user_repository import UserRepository
+from app.services.auth_service import AuthService
 from app.services.live_room_service import LiveRoomService
+
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def get_live_room_service(db: Session = Depends(get_db)) -> LiveRoomService:
     return LiveRoomService(LiveRoomRepository(db))
+
+
+def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
+    return AuthService(UserRepository(db))
+
+
+def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+):
+    from app.core.config import settings
+    from app.core.exceptions import AppException
+
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise AppException("请先登录", code=40100, status_code=401)
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+        )
+        user_id = int(payload.get("sub", 0))
+    except (ValueError, TypeError, jwt.InvalidTokenError) as exc:
+        raise AppException("登录凭证无效或已过期", code=40100, status_code=401) from exc
+
+    user = UserRepository(db).get_by_id(user_id)
+    if user is None or not user.is_active:
+        raise AppException("用户不存在或已停用", code=40102, status_code=401)
+    return user

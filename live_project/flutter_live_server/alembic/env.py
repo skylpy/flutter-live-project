@@ -6,6 +6,7 @@ from alembic import context
 from app.core.config import settings
 from app.models.base import Base
 from app.models.live_room import LiveRoom  # noqa: F401 - registers model metadata
+from app.models.user import User  # noqa: F401 - registers model metadata
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))

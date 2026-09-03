@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/create_live/presentation/pages/create_live_page.dart';
+import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/home/presentation/pages/home_page.dart';
 import '../../features/live/presentation/pages/live_page.dart';
 import '../../features/live/presentation/pages/live_room_page.dart';
@@ -84,6 +85,11 @@ final appRouter = GoRouter(
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) =>
           LiveRoomPage(roomId: state.pathParameters['roomId']!),
+    ),
+    GoRoute(
+      path: '/login',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const LoginPage(),
     ),
   ],
 );

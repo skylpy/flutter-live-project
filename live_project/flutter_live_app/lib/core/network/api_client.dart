@@ -1,11 +1,12 @@
 import 'package:dio/dio.dart';
 
 import '../config/environment.dart';
+import '../auth/token_storage.dart';
 import 'api_exception.dart';
 import 'api_response.dart';
 
 class ApiClient {
-  ApiClient() : _dio = Dio() {
+  ApiClient(this._tokenStorage) : _dio = Dio() {
     _dio.options = BaseOptions(
       baseUrl: Environment.apiBaseUrl,
       connectTimeout: const Duration(seconds: 10),
@@ -16,9 +17,11 @@ class ApiClient {
     _dio.interceptors.addAll([
       LogInterceptor(requestBody: false, responseBody: false),
       InterceptorsWrapper(
-        onRequest: (options, handler) {
-          // JWT will be supplied here once authentication is introduced.
-          // options.headers['Authorization'] = 'Bearer $token';
+        onRequest: (options, handler) async {
+          final token = await _tokenStorage.readToken();
+          if (token != null && token.isNotEmpty) {
+            options.headers['Authorization'] = 'Bearer $token';
+          }
           handler.next(options);
         },
       ),
@@ -26,6 +29,7 @@ class ApiClient {
   }
 
   final Dio _dio;
+  final TokenStorage _tokenStorage;
 
   Future<ApiResponse<T>> get<T>(
     String path, {
@@ -37,17 +41,7 @@ class ApiClient {
       if (data is! Map) {
         throw const ApiException(message: '服务端返回格式不正确');
       }
-      final apiResponse = ApiResponse<T>.fromJson(
-        Map<String, Object?>.from(data),
-        parseData,
-      );
-      if (apiResponse.code != 0) {
-        throw ApiException(
-          message: apiResponse.message,
-          code: apiResponse.code,
-        );
-      }
-      return apiResponse;
+      return _parseResponse(data, parseData);
     } on ApiException {
       rethrow;
     } on DioException catch (error) {
@@ -55,6 +49,41 @@ class ApiClient {
     } on FormatException {
       throw const ApiException(message: '服务端返回格式不正确');
     }
+  }
+
+  Future<ApiResponse<T>> post<T>(
+    String path, {
+    Object? data,
+    required T Function(Object? value) parseData,
+  }) async {
+    try {
+      final response = await _dio.post<Object?>(path, data: data);
+      final responseData = response.data;
+      if (responseData is! Map) {
+        throw const ApiException(message: '服务端返回格式不正确');
+      }
+      return _parseResponse(responseData, parseData);
+    } on ApiException {
+      rethrow;
+    } on DioException catch (error) {
+      throw _mapDioException(error);
+    } on FormatException {
+      throw const ApiException(message: '服务端返回格式不正确');
+    }
+  }
+
+  ApiResponse<T> _parseResponse<T>(
+    Map responseData,
+    T Function(Object? value) parseData,
+  ) {
+    final apiResponse = ApiResponse<T>.fromJson(
+      Map<String, Object?>.from(responseData),
+      parseData,
+    );
+    if (apiResponse.code != 0) {
+      throw ApiException(message: apiResponse.message, code: apiResponse.code);
+    }
+    return apiResponse;
   }
 
   ApiException _mapDioException(DioException error) {

@@ -1,7 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/live_room.dart';
+import '../../data/datasources/live_chat_client.dart';
+import '../../data/models/live_chat_message.dart';
+import '../../../../core/network/api_provider.dart';
 import '../controllers/live_room_controller.dart';
 
 class LiveRoomPage extends ConsumerWidget {
@@ -45,11 +50,11 @@ class _LiveRoomContent extends StatelessWidget {
             child: _RoomHeader(room: room),
           ),
           const Positioned(left: 16, bottom: 102, child: _DanmakuList()),
-          const Positioned(
+          Positioned(
             left: 16,
             right: 16,
             bottom: 18,
-            child: _RoomInputBar(),
+            child: _RoomInputBar(roomId: room.id.toString()),
           ),
         ],
       ),
@@ -181,37 +186,112 @@ class _DanmakuLine extends StatelessWidget {
   }
 }
 
-class _RoomInputBar extends StatelessWidget {
-  const _RoomInputBar();
+class _RoomInputBar extends ConsumerStatefulWidget {
+  const _RoomInputBar({required this.roomId});
+
+  final String roomId;
+
+  @override
+  ConsumerState<_RoomInputBar> createState() => _RoomInputBarState();
+}
+
+class _RoomInputBarState extends ConsumerState<_RoomInputBar> {
+  final _textController = TextEditingController();
+  final _chatClient = LiveChatClient();
+  StreamSubscription<LiveChatMessage>? _subscription;
+  bool _connected = false;
+  String? _status;
+
+  @override
+  void initState() {
+    super.initState();
+    _connect();
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    _subscription?.cancel();
+    _chatClient.dispose();
+    super.dispose();
+  }
+
+  Future<void> _connect() async {
+    final token = await ref.read(tokenStorageProvider).readToken();
+    if (!mounted) return;
+    if (token == null || token.isEmpty) {
+      setState(() => _status = '登录后可发送弹幕');
+      return;
+    }
+    try {
+      await _chatClient.connect(widget.roomId, token);
+      _subscription = _chatClient.messages.listen((message) {
+        if (mounted && message.type == 'error') {
+          setState(() => _status = message.message);
+        }
+      });
+      if (mounted) setState(() => _connected = true);
+    } catch (_) {
+      if (mounted) setState(() => _status = '弹幕连接失败');
+    }
+  }
+
+  void _send() {
+    final message = _textController.text.trim();
+    if (!_connected || message.isEmpty) return;
+    _chatClient.sendMessage(message);
+    _textController.clear();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.white12,
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: const Text(
-              '说点什么...',
-              style: TextStyle(color: Colors.white60),
+        if (_status != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 12, bottom: 5),
+            child: Text(
+              _status!,
+              style: const TextStyle(color: Colors.white60, fontSize: 11),
             ),
           ),
-        ),
-        IconButton(
-          onPressed: () {},
-          color: Colors.white,
-          icon: const Icon(Icons.card_giftcard),
-          tooltip: '礼物',
-        ),
-        IconButton(
-          onPressed: () {},
-          color: Colors.pinkAccent,
-          icon: const Icon(Icons.favorite),
-          tooltip: '点赞',
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _textController,
+                onSubmitted: (_) => _send(),
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: '说点什么...',
+                  hintStyle: const TextStyle(color: Colors.white60),
+                  filled: true,
+                  fillColor: Colors.white12,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+            ),
+            IconButton(
+              onPressed: () {},
+              color: Colors.white,
+              icon: const Icon(Icons.card_giftcard),
+              tooltip: '礼物',
+            ),
+            IconButton(
+              onPressed: _send,
+              color: Colors.pinkAccent,
+              icon: const Icon(Icons.send),
+              tooltip: '发送弹幕',
+            ),
+          ],
         ),
       ],
     );

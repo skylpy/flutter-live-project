@@ -8,7 +8,7 @@ live_project/
 └── flutter_live_server/  # FastAPI / SQLAlchemy / MySQL / Alembic
 ```
 
-第一阶段只实现直播房间 REST 闭环和 UI 占位，不包含播放器、推流、拉流、WebSocket、Redis 业务、JWT 登录或原生插件。
+当前已完成第一阶段 REST 闭环，并开始第二阶段认证与实时基础能力；播放器、推流、拉流和原生插件仍未实现。
 
 ## 后端快速开始
 
@@ -73,11 +73,12 @@ iOS Simulator / macOS 可使用默认的 `localhost`；真机和 HarmonyOS 真�
 - 点击房间后通过 roomId 请求详情，并由 root navigator 打开全屏黑色直播间占位页
 - FastAPI 统一响应、错误处理、CORS、SQLAlchemy 2.x Repository / Service 分层
 - MySQL `live_rooms` 表、Alembic 初始迁移、可重复执行的四条 Seed 数据
+- 第二阶段：用户注册/登录、JWT、Redis 在线人数、带 JWT 的直播间 WebSocket 弹幕
 
 ## 暂未实现
 
-JWT、Redis 实时业务、WebSocket/IM、礼物、推流、拉流、RTMP、HTTP-FLV、HLS、WebRTC、播放器、PlatformView、Pigeon、Swift、Kotlin、ArkTS、HarmonyOS、连麦、PK、AI 审核和直播摘要。
+礼物、推流、拉流、RTMP、HTTP-FLV、HLS、WebRTC、播放器、PlatformView、Pigeon、Swift、Kotlin、ArkTS、HarmonyOS、连麦、PK、AI 审核和直播摘要。
 
 ## 第二阶段建议
 
-先增加用户与 JWT 登录，再引入 Redis 和 WebSocket IM 基础，随后设计独立的 `flutter_live_core` / `LiveEngine` 接口以及原生播放器和推流插件；媒体分发应由专业媒体服务/CDN 承担，不经过 FastAPI 转发视频二进制流。
+下一步可完善认证 UI、在线人数展示和消息历史，再设计独立的 `flutter_live_core` / `LiveEngine` 接口以及原生播放器和推流插件；媒体分发应由专业媒体服务/CDN 承担，不经过 FastAPI 转发视频二进制流。
