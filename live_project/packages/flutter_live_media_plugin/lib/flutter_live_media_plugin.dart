@@ -5,6 +5,9 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_live_core/flutter_live_core.dart';
 
 import 'src/generated/live_media_api.g.dart';
+import 'src/player_view_stub.dart'
+    if (dart.library.ohos) 'src/player_view_ohos.dart'
+    as platform_view;
 
 /// Embeds the registered native player view on supported native platforms.
 final class FlutterLiveMediaPlayerView extends StatelessWidget {
@@ -21,10 +24,7 @@ final class FlutterLiveMediaPlayerView extends StatelessWidget {
     if (defaultTargetPlatform == TargetPlatform.android) {
       return const AndroidView(viewType: 'flutter_live_media_player_view');
     }
-    return const ColoredBox(
-      color: Color(0xFF080808),
-      child: Center(child: Text('原生播放器视图待支持当前平台')),
-    );
+    return platform_view.buildLiveMediaPlayerView();
   }
 }
 

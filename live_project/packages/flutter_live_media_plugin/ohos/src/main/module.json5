@@ -1,0 +1,11 @@
+{
+  "module": {
+    "name": "flutter_live_media_plugin",
+    "type": "har",
+    "deviceTypes": [
+      "default",
+      "tablet",
+      "2in1"
+    ]
+  }
+}

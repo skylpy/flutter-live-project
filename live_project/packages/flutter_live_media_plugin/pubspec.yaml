@@ -40,6 +40,9 @@ flutter:
       android:
         package: com.skylpy.flutter_live_media_plugin
         pluginClass: FlutterLiveMediaPlugin
+      ohos:
+        package: com.skylpy.flutter_live_media_plugin
+        pluginClass: FlutterLiveMediaPlugin
       ios:
         pluginClass: FlutterLiveMediaPlugin
       macos:
