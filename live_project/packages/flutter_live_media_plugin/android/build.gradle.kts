@@ -1,6 +1,8 @@
 group = "com.skylpy.flutter_live_media_plugin"
 version = "1.0-SNAPSHOT"
 
+// 插件作为 Flutter 工程的 Android library 被宿主 App 引入；版本与当前 Flutter
+// 工具生成的 Android 工程保持一致，避免单独维护另一套构建脚本。
 buildscript {
     val kotlinVersion = "2.4.0"
     repositories {
@@ -45,6 +47,7 @@ android {
     }
 
     defaultConfig {
+        // API 24 是当前播放器插件支持的最低 Android 版本。
         minSdk = 24
     }
 
@@ -72,8 +75,10 @@ kotlin {
 }
 
 dependencies {
+    // ExoPlayer 负责媒体解析和播放，PlayerView 负责把画面嵌入 PlatformView。
     implementation("androidx.media3:media3-exoplayer:1.6.1")
     implementation("androidx.media3:media3-ui:1.6.1")
+    // Pigeon 生成的 Kotlin HostApi 使用 suspend 函数，需要 Android 协程运行时。
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("org.mockito:mockito-core:5.0.0")

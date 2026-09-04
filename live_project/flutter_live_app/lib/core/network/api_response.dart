@@ -1,3 +1,6 @@
+/// 后端 HTTP 接口统一使用的响应外壳。
+///
+/// [T] 是 data 的真实业务类型，例如 `List<LiveRoom>` 或 `AuthSession`。
 class ApiResponse<T> {
   const ApiResponse({
     required this.code,
@@ -13,6 +16,7 @@ class ApiResponse<T> {
     Map<String, Object?> json,
     T Function(Object? value) parseData,
   ) {
+    // 只在这一层读取 code/message/data，具体模型只解析自己的 data。
     return ApiResponse<T>(
       code: _asInt(json['code']),
       message: json['message'] as String? ?? '',

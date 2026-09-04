@@ -1,5 +1,7 @@
 # flutter_live_media_plugin
 
+项目整体调用链请先看 [ARCHITECTURE.md](../../ARCHITECTURE.md)。本插件的链路是：Flutter `FlutterLiveMediaEngine` → Pigeon HostApi → 当前平台原生引擎 → PlatformView；原生状态再通过 Pigeon FlutterApi 返回 Flutter。
+
 iOS/macOS 原生媒体引擎的 Flutter Plugin 边界。
 
 当前版本完成 Apple 和 Android 平台的最小播放链路：

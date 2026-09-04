@@ -4,6 +4,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class LiveRoomResponse(BaseModel):
+    """数据库 LiveRoom 对外暴露的安全响应格式。
+
+    serialization_alias 把 Python/数据库字段转换成 Flutter 更习惯的 camelCase。
+    """
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: int

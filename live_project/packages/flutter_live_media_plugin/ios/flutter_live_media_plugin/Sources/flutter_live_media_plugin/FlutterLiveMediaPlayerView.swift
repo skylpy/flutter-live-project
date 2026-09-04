@@ -2,6 +2,7 @@ import AVFoundation
 import Flutter
 import UIKit
 
+/// 创建并把原生播放器视图交给插件实例管理。
 final class FlutterLiveMediaPlayerViewFactory: NSObject, FlutterPlatformViewFactory {
   private let onViewCreated: (FlutterLiveMediaPlayerView) -> Void
 
@@ -25,11 +26,15 @@ final class FlutterLiveMediaPlayerViewFactory: NSObject, FlutterPlatformViewFact
   }
 }
 
+/// iOS PlatformView。
+///
+/// 这个 View 只负责渲染 AVPlayerLayer，不负责播放控制和重连；控制逻辑位于插件类。
 final class FlutterLiveMediaPlayerView: UIView, FlutterPlatformView {
   private var playerLayer: AVPlayerLayer?
   private let label = UILabel(frame: .zero)
 
   override init(frame: CGRect) {
+    // 先显示黑色占位和文字；真正绑定 AVPlayer 后由 setPlayer 隐藏文字。
     super.init(frame: frame)
     backgroundColor = .black
     clipsToBounds = true
@@ -54,6 +59,7 @@ final class FlutterLiveMediaPlayerView: UIView, FlutterPlatformView {
   }
 
   func setPlayer(_ player: AVPlayer?) {
+    // 重新绑定播放器时先移除旧 layer，防止一个 View 叠加多个视频层。
     playerLayer?.removeFromSuperlayer()
     playerLayer = nil
     label.isHidden = player != nil

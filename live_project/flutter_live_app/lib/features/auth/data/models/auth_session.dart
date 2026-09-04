@@ -1,3 +1,6 @@
+/// 服务端返回的用户资料模型。
+///
+/// Model 只描述数据，不负责发请求或修改 Riverpod 状态。
 class AuthUser {
   const AuthUser({
     required this.id,
@@ -23,6 +26,9 @@ class AuthUser {
   static String _asString(Object? value) => value is String ? value : '';
 }
 
+/// 登录/注册成功后得到的会话模型。
+///
+/// Token 保存到 TokenStorage 后，后续 ApiClient 会自动把它放进请求头。
 class AuthSession {
   const AuthSession({
     required this.accessToken,

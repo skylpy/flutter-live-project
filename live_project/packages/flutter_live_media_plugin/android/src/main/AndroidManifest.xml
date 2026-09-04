@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
   package="com.skylpy.flutter_live_media_plugin">
+  <!-- 播放远程 HTTP/HTTPS 流必须声明网络权限；最终权限会合并到宿主 App。 -->
   <uses-permission android:name="android.permission.INTERNET" />
 </manifest>

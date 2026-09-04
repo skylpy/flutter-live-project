@@ -5,6 +5,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """应用配置。
+
+    字段默认值只服务于本地开发；部署环境应通过 `.env` 或环境变量覆盖密码、
+    JWT 密钥和数据库地址。Pydantic Settings 负责类型转换和配置加载。
+    """
     app_name: str = "Flutter Live Server"
     app_env: str = "development"
     debug: bool = True
@@ -34,17 +39,20 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
+        """生成 SQLAlchemy 使用的 MySQL 连接字符串。"""
         user = quote_plus(self.mysql_user)
         password = quote_plus(self.mysql_password)
         return f"mysql+pymysql://{user}:{password}@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}?charset=utf8mb4"
 
     @property
     def redis_url(self) -> str:
+        """生成异步 Redis 客户端使用的 URL。"""
         return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
 
 
 @lru_cache
 def get_settings() -> Settings:
+    """只创建一次配置对象，避免每个请求重复读取环境变量。"""
     return Settings()
 
 

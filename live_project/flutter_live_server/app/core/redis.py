@@ -1,4 +1,7 @@
-"""Redis clients for phase-two realtime features."""
+"""Redis 客户端和实时功能的基础配置。
+
+Redis 用于在线人数集合和跨进程 Pub/Sub；视频本身不会经过 Redis。
+"""
 
 from functools import lru_cache
 from typing import Any
@@ -9,6 +12,7 @@ from .config import settings
 
 
 def get_redis_config() -> dict[str, Any]:
+    """返回同步客户端需要的连接参数。"""
     return {
         "host": settings.redis_host,
         "port": settings.redis_port,
@@ -17,7 +21,7 @@ def get_redis_config() -> dict[str, Any]:
 
 
 def get_redis_client() -> Any:
-    """Create a client only when a future feature explicitly needs Redis."""
+    """按需创建同步客户端，供脚本或同步代码使用。"""
     try:
         import redis
     except ImportError as exc:
@@ -27,4 +31,5 @@ def get_redis_client() -> Any:
 
 @lru_cache
 def get_async_redis() -> Redis:
+    """缓存一个异步 Redis 客户端，供 WebSocket 任务复用。"""
     return from_url(settings.redis_url, decode_responses=True)

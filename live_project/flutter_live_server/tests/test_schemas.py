@@ -5,6 +5,7 @@ from app.schemas.live_room import LiveRoomResponse
 
 
 def test_live_room_response_uses_flutter_camel_case() -> None:
+    """确保后端字段能序列化成 Flutter 模型使用的命名。"""
     room = LiveRoom(
         id=1,
         title="测试直播",

@@ -5,11 +5,13 @@ import 'package:go_router/go_router.dart';
 import '../../../live/presentation/controllers/live_list_controller.dart';
 import '../../../live/presentation/widgets/live_room_card.dart';
 
+/// 首页：从 Riverpod 读取直播列表，并用两列网格展示房间卡片。
 class HomePage extends ConsumerWidget {
   const HomePage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // watch 会在 loading/data/error 任一状态变化时重建页面。
     final rooms = ref.watch(liveListControllerProvider);
     return Scaffold(
       appBar: AppBar(
@@ -29,6 +31,7 @@ class HomePage extends ConsumerWidget {
           onRetry: () => ref.invalidate(liveListControllerProvider),
         ),
         data: (items) => RefreshIndicator(
+          // 刷新只调用 Controller 的方法，页面不直接发 HTTP 请求。
           onRefresh: () =>
               ref.read(liveListControllerProvider.notifier).refreshRooms(),
           child: items.isEmpty
@@ -63,6 +66,7 @@ class HomePage extends ConsumerWidget {
   }
 }
 
+/// 首页请求失败时显示的可重试状态。
 class _ErrorView extends StatelessWidget {
   const _ErrorView({required this.message, required this.onRetry});
 

@@ -14,6 +14,7 @@ SEED_ROOMS = (
 
 
 def seed_live_rooms() -> int:
+    """幂等写入四条演示直播间，已存在的房间不会重复插入。"""
     inserted = 0
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     with SessionLocal() as db:

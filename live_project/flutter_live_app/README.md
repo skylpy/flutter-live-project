@@ -1,5 +1,9 @@
 # flutter_live_app
 
+建议先阅读项目根目录的 [ARCHITECTURE.md](../ARCHITECTURE.md)。客户端的基本链路是：页面 → Riverpod Controller → Repository → DataSource → ApiClient → FastAPI。
+
+`lib/core/media` 只暴露 `LiveEngine` 抽象，直播间不会直接依赖 AVPlayer、ExoPlayer 或 Pigeon；平台播放器位于 `../packages/flutter_live_media_plugin`。
+
 Flutter 直播客户端第一阶段。依赖 Flutter 3.47.2 / Dart 3.13.2，使用 Riverpod、go_router、Dio 和 Material 3。
 
 ```bash

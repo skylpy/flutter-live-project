@@ -1,3 +1,9 @@
+"""FastAPI 应用组装入口。
+
+本文件只负责创建 App、注册中间件和异常处理器；具体业务接口位于
+`app/api/v1/endpoints`，避免所有代码堆在一个文件中。
+"""
+
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -23,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """服务启动时检查 MySQL，但不阻止健康检查接口启动。"""
     if check_database_connection():
         logger.info("Database connection check succeeded")
     else:
@@ -30,6 +37,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
+# 所有接口最终通过 api_router 挂载到 /api/v1 下，方便未来做版本升级。
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
@@ -43,6 +51,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# 统一异常处理保证客户端始终收到 {code, message, data} 结构。
 app.add_exception_handler(AppException, app_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(SQLAlchemyError, database_exception_handler)

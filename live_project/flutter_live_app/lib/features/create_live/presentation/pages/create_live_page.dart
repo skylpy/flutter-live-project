@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+/// 开播入口占位页。
+///
+/// 当前按钮不启动摄像头或推流，后续应接入独立的推流引擎和权限流程。
 class CreateLivePage extends StatelessWidget {
   const CreateLivePage({super.key});
 

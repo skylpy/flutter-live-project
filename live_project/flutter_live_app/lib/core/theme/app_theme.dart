@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+/// 全局 Material 3 主题。
+///
+/// 颜色、背景和卡片样式集中管理；直播间可以单独使用黑色背景，不强制整个
+/// App 使用暗色主题。
 class AppTheme {
   const AppTheme._();
 

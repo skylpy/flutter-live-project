@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+/// 消息 Tab 占位页，未来承载私信、系统通知和互动消息。
 class MessagePage extends StatelessWidget {
   const MessagePage({super.key});
 

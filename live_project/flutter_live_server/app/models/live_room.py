@@ -7,6 +7,11 @@ from .base import Base
 
 
 class LiveRoom(Base):
+    """直播间元数据表。
+
+    这里只保存标题、主播、状态和播放地址等控制面数据；视频二进制由媒体
+    服务/CDN 分发，不经过 FastAPI 或 MySQL。
+    """
     __tablename__ = "live_rooms"
     __table_args__ = (
         UniqueConstraint("title", "anchor_name", name="uq_live_rooms_title_anchor"),

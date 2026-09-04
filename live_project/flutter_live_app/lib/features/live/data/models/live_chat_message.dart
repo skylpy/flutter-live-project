@@ -1,3 +1,7 @@
+/// 一条 WebSocket 弹幕或在线人数事件。
+///
+/// 它是实时通道的传输模型，不等同于数据库中的 LiveRoom；两者来源和生命
+/// 周期不同，所以分开建模。
 class LiveChatMessage {
   const LiveChatMessage({
     required this.type,

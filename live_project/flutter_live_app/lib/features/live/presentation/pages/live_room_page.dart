@@ -12,6 +12,10 @@ import '../../../../core/network/api_provider.dart';
 import '../../../../core/media/live_engine_provider.dart';
 import '../controllers/live_room_controller.dart';
 
+/// 全屏直播间页面。
+///
+/// 页面同时展示三类内容：原生播放器视图、Flutter 叠加层（主播信息/弹幕/操作栏）
+/// 和实时通道状态。三者分开后，替换播放器或 IM 实现不会影响布局。
 class LiveRoomPage extends ConsumerWidget {
   const LiveRoomPage({required this.roomId, super.key});
 
@@ -19,6 +23,7 @@ class LiveRoomPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // 先按 roomId 请求详情，避免页面只依赖首页传来的旧快照。
     final room = ref.watch(liveRoomControllerProvider(roomId));
     return Scaffold(
       backgroundColor: Colors.black,
@@ -51,6 +56,7 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
   @override
   void initState() {
     super.initState();
+    // 监听平台无关的 LiveEngineEvent，页面不直接认识 AVPlayer/ExoPlayer。
     _engineSubscription = ref.read(liveEngineProvider).events.listen((event) {
       if (!mounted || event.message == null) return;
       setState(() => _engineStatus = event.message);
@@ -60,12 +66,14 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
 
   @override
   void dispose() {
+    // 先取消事件订阅，再停止播放器，确保离开页面后没有异步回调更新已销毁 UI。
     _engineSubscription?.cancel();
     ref.read(liveEngineProvider).stop();
     super.dispose();
   }
 
   Future<void> _prepareEngine() async {
+    // 初始化和播放请求放在首帧之后，避免在 Widget 尚未挂载完成时创建 PlatformView。
     final engine = ref.read(liveEngineProvider);
     await engine.initialize();
     if (!mounted) return;
@@ -108,6 +116,7 @@ class _PlayerPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // PlatformView 是真正的原生视频容器；其上的文字只是当前没有真实流时的说明层。
     return Stack(
       children: [
         const Positioned(
@@ -205,6 +214,7 @@ class _RoomHeader extends StatelessWidget {
 }
 
 class _DanmakuList extends StatelessWidget {
+  // 当前使用固定演示数据，后续可以替换为 WebSocket 消息列表。
   const _DanmakuList();
 
   @override
@@ -278,6 +288,7 @@ class _RoomInputBarState extends ConsumerState<_RoomInputBar> {
   }
 
   Future<void> _connect() async {
+    // 只有登录用户才建立弹幕连接；播放器播放和弹幕权限彼此独立。
     final token = await ref.read(tokenStorageProvider).readToken();
     if (!mounted) return;
     if (token == null || token.isEmpty) {
@@ -298,6 +309,7 @@ class _RoomInputBarState extends ConsumerState<_RoomInputBar> {
   }
 
   void _send() {
+    // 发送前在客户端做最基本的空值检查，服务端仍会再次校验长度和权限。
     final message = _textController.text.trim();
     if (!_connected || message.isEmpty) return;
     _chatClient.sendMessage(message);
@@ -359,6 +371,7 @@ class _RoomInputBarState extends ConsumerState<_RoomInputBar> {
   }
 }
 
+/// 直播间详情加载失败时的错误状态和重试入口。
 class _RoomError extends StatelessWidget {
   const _RoomError({required this.message, required this.onRetry});
 

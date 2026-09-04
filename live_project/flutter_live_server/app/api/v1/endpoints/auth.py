@@ -19,6 +19,7 @@ def register(
     request: UserRegisterRequest,
     service: AuthService = Depends(get_auth_service),
 ) -> ApiResponse[AuthSessionResponse]:
+    """创建用户并返回可立即使用的 JWT 会话。"""
     return success(service.register(request))
 
 
@@ -27,9 +28,11 @@ def login(
     request: UserLoginRequest,
     service: AuthService = Depends(get_auth_service),
 ) -> ApiResponse[AuthSessionResponse]:
+    """验证用户名和密码，成功后返回 JWT 会话。"""
     return success(service.login(request.username, request.password))
 
 
 @router.get("/me", response_model=ApiResponse[UserResponse])
 def me(user: User = Depends(get_current_user)) -> ApiResponse[UserResponse]:
+    """返回当前 Bearer Token 对应的用户资料。"""
     return success(user)

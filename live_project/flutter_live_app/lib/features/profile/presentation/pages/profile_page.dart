@@ -4,11 +4,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../../auth/presentation/controllers/auth_controller.dart';
 
+/// 我的 Tab：展示当前用户，未登录时跳转到登录页。
 class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // 认证状态由 AuthController 统一恢复和修改，ProfilePage 只负责展示。
     final authState = ref.watch(authControllerProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('我的')),

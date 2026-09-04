@@ -10,6 +10,7 @@ import '../../features/message/presentation/pages/message_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
 import '../../shared/widgets/main_scaffold.dart';
 
+// 根 Navigator 承载不属于底部 Tab 的页面，例如全屏直播间和登录页。
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 final _homeNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'home');
 final _discoverNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'discover');
@@ -19,6 +20,10 @@ final _createLiveNavigatorKey = GlobalKey<NavigatorState>(
 final _messageNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'message');
 final _profileNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'profile');
 
+/// 全局路由表。
+///
+/// 五个 StatefulShellBranch 各自拥有 Navigator，所以切换 Tab 后仍能保留
+/// 原来的子页面和返回栈。直播间指定 root navigator，因此不会显示底部栏。
 final appRouter = GoRouter(
   navigatorKey: _rootNavigatorKey,
   initialLocation: '/home',

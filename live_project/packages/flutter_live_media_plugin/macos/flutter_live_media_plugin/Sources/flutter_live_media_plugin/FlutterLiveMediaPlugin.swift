@@ -2,6 +2,10 @@ import AVFoundation
 import Cocoa
 import FlutterMacOS
 
+/// macOS 原生播放器插件。
+///
+/// 结构与 iOS 实现保持一致：Pigeon 负责通信，AVPlayer 负责播放，NSView/AVPlayerLayer
+/// 负责显示。平台差异只留在原生层，Flutter 继续使用同一个 LiveEngine 接口。
 public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHostApi {
   private let flutterApi: LiveMediaFlutterApi
   private var player: AVPlayer?
@@ -25,6 +29,7 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
   }
 
   public static func register(with registrar: FlutterPluginRegistrar) {
+    // 注册 Pigeon HostApi 和 macOS PlatformView 工厂。
     let instance = FlutterLiveMediaPlugin(messenger: registrar.messenger)
     LiveMediaHostApiSetup.setUp(binaryMessenger: registrar.messenger, api: instance)
     registrar.register(
@@ -36,16 +41,19 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
   }
 
   func initialize(configuration: LiveEngineConfiguration) async throws -> Bool {
+    // 当前播放器在 play 时创建；该方法保留统一的跨平台生命周期入口。
     emit(type: .initialized, message: "AVPlayer 已初始化")
     return true
   }
 
   func play(url: String) async throws -> Bool {
+    // AVPlayer 当前只接受 HTTP/HTTPS；其他协议留给后续专用 SDK。
     guard let mediaURL = validatedURL(from: url) else {
       emit(type: .error, message: "仅支持 HTTP/HTTPS 播放地址")
       return false
     }
     return await MainActor.run {
+      // AVPlayer、KVO 和 NSView 都在主线程操作，避免原生状态与 UI 竞争。
       currentURL = mediaURL
       retryCount = 0
       retryWorkItem?.cancel()
@@ -54,6 +62,7 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
   }
 
   func stop() async throws -> Bool {
+    // 清空 URL 会让延迟重连任务失效，再释放播放器观察者和视图绑定。
     await MainActor.run {
       currentURL = nil
       retryWorkItem?.cancel()
@@ -68,6 +77,7 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
   }
 
   private func beginPlayback(url: URL) -> Bool {
+    // 重试时重新建立 AVPlayerItem，避免继续使用已经失败的 item。
     clearPlayerObservers()
     let item = AVPlayerItem(url: url)
     let nextPlayer = AVPlayer(playerItem: item)
@@ -81,6 +91,7 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
   }
 
   private func observe(player: AVPlayer, item: AVPlayerItem) {
+    // 监听缓冲/播放状态，以及卡顿、失败和自然结束通知。
     statusObservation = item.observe(\.status, options: [.initial, .new]) {
       [weak self] item, _ in
       if item.status == .failed {
@@ -134,6 +145,7 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
   }
 
   private func scheduleRetry(message: String) {
+    // 使用 1s、2s、4s 退避，最多三次，避免网络故障时高频重试。
     guard currentURL != nil else { return }
     guard retryCount < maxRetryCount else {
       emit(type: .error, message: "重连失败，请稍后重试")
@@ -145,6 +157,7 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
     retryWorkItem?.cancel()
     let delay = pow(2.0, Double(retryCount - 1))
     let workItem = DispatchWorkItem { [weak self] in
+      // 只有当前仍在同一个直播间时，旧的重试任务才允许重新播放。
       guard let self, let url = self.currentURL else { return }
       self.player = nil
       _ = self.beginPlayback(url: url)
@@ -172,6 +185,7 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
     message: String,
     retryCount: Int64? = nil
   ) {
+    // Flutter 页面可能已经销毁；忽略回调异常，不能影响原生资源清理。
     let event = LiveMediaEvent(type: type, message: message, retryCount: retryCount)
     Task {
       try? await flutterApi.onEvent(event: event)
@@ -179,6 +193,7 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
   }
 
   private func validatedURL(from value: String) -> URL? {
+    // 所有播放地址在这里做协议白名单校验，避免业务层到处重复判断。
     guard let url = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines)),
           let scheme = url.scheme?.lowercased(),
           scheme == "http" || scheme == "https"

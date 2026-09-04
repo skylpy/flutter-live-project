@@ -1,5 +1,7 @@
 import 'package:pigeon/pigeon.dart';
 
+// 这是跨语言协议的唯一源文件。修改字段后重新运行 pigeon，生成 Dart、
+// Swift 和 Kotlin 文件；不要直接修改生成文件，否则下次生成会被覆盖。
 @ConfigurePigeon(
   PigeonOptions(
     dartOut: 'lib/src/generated/live_media_api.g.dart',
@@ -39,6 +41,7 @@ class LiveMediaEvent {
 
 @HostApi()
 abstract class LiveMediaHostApi {
+  // Flutter → 原生：初始化、播放和停止请求。
   @async
   bool initialize(LiveEngineConfiguration configuration);
 
@@ -51,5 +54,6 @@ abstract class LiveMediaHostApi {
 
 @FlutterApi()
 abstract class LiveMediaFlutterApi {
+  // 原生 → Flutter：播放器状态回调。
   void onEvent(LiveMediaEvent event);
 }

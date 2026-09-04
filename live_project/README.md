@@ -1,5 +1,7 @@
 # Flutter Live 项目
 
+新人阅读入口：先看 [ARCHITECTURE.md](ARCHITECTURE.md)，再沿着文档中的链路阅读源码。业务源码已补充中文注释，说明每个层的职责、调用原因和资源释放方式。
+
 前后端分离的跨平台直播 App 基础项目：
 
 ```text

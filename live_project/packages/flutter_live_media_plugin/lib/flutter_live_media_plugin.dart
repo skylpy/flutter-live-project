@@ -28,14 +28,15 @@ final class FlutterLiveMediaPlayerView extends StatelessWidget {
   }
 }
 
-/// iOS media-engine adapter.
+/// Flutter 侧的跨平台媒体引擎适配器。
 ///
-/// The native side owns an AVPlayer on Apple platforms. A different player
-/// implementation can be introduced without changing the [LiveEngine]
-/// contract used by the application.
+/// 原生侧拥有真正的播放器对象：Apple 使用 AVPlayer，Android 使用 ExoPlayer。
+/// 本类只负责调用生成的 Pigeon HostApi、接收事件并转换成 [LiveEngineEvent]，
+/// 所以业务页面不需要知道具体原生 SDK。
 final class FlutterLiveMediaEngine implements LiveEngine {
   FlutterLiveMediaEngine({LiveMediaHostApi? api})
     : _api = api ?? LiveMediaHostApi() {
+    // 注册全局 FlutterApi 回调，让原生层可以把播放状态传回来。
     LiveMediaFlutterApi.setUp(_NativeEventHandler(_handleNativeEvent));
   }
 
@@ -50,6 +51,7 @@ final class FlutterLiveMediaEngine implements LiveEngine {
   @override
   Future<void> initialize() async {
     _ensureUsable();
+    // Pigeon 会把 Dart 对象编码成平台消息，再由原生实现执行初始化。
     final initialized = await _api.initialize(LiveEngineConfiguration());
     if (!initialized) {
       _emit(LiveEngineEventType.error, '原生媒体引擎初始化失败');
@@ -59,6 +61,7 @@ final class FlutterLiveMediaEngine implements LiveEngine {
   }
 
   void _handleNativeEvent(LiveMediaEvent event) {
+    // 原生枚举和 core 枚举值分开定义，避免 core 包依赖任何平台代码。
     final type = switch (event.type) {
       LiveMediaEventType.initialized => LiveEngineEventType.initialized,
       LiveMediaEventType.playing => LiveEngineEventType.playing,
@@ -82,6 +85,7 @@ final class FlutterLiveMediaEngine implements LiveEngine {
       _emit(LiveEngineEventType.error, '播放地址为空');
       return;
     }
+    // “请求已发送”和“真正开始播放”是两个状态；playing 由原生播放器回调。
     final accepted = await _api.play(url);
     if (!accepted) {
       _emit(LiveEngineEventType.error, '原生播放器不支持该播放地址');
@@ -123,6 +127,7 @@ final class FlutterLiveMediaEngine implements LiveEngine {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
+    // 解除 Pigeon 回调并关闭事件流，防止原生异步事件继续访问已销毁对象。
     LiveMediaFlutterApi.setUp(null);
     await _events.close();
   }

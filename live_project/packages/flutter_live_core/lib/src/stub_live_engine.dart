@@ -3,10 +3,10 @@ import 'dart:async';
 import 'live_engine.dart';
 import 'live_engine_event.dart';
 
-/// Development implementation that never opens a camera or media stream.
+/// 不连接真实播放器的演示实现。
 ///
-/// It makes the Flutter-side lifecycle testable before native engines are
-/// introduced for iOS, Android, or HarmonyOS.
+/// 它用于 Dart 单元测试和没有原生平台时的开发，帮助上层先验证生命周期，
+/// 也说明真正的原生实现只需要遵守 [LiveEngine] 接口。
 final class StubLiveEngine implements LiveEngine {
   final StreamController<LiveEngineEvent> _eventController =
       StreamController<LiveEngineEvent>.broadcast();
@@ -18,6 +18,7 @@ final class StubLiveEngine implements LiveEngine {
 
   @override
   Future<void> initialize() async {
+    // Stub 只发事件，不创建任何原生资源。
     _ensureUsable();
     if (_initialized) return;
     _initialized = true;
@@ -26,6 +27,7 @@ final class StubLiveEngine implements LiveEngine {
 
   @override
   Future<void> play(String url) async {
+    // 真实实现会把地址交给原生播放器；Stub 只验证参数和生命周期。
     _ensureUsable();
     await initialize();
     if (url.trim().isEmpty) {

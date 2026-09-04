@@ -1,4 +1,6 @@
-"""create live rooms
+"""创建直播间元数据表。
+
+该迁移只建立控制面数据，不创建视频文件或流媒体二进制字段。
 
 Revision ID: 0001_create_live_rooms
 Revises:
@@ -16,6 +18,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """创建 live_rooms 表和查询直播状态需要的索引。"""
     op.create_table(
         "live_rooms",
         sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
@@ -42,6 +45,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """回滚本次迁移，删除直播间表及其索引。"""
     op.drop_index("ix_live_rooms_status_created_at", table_name="live_rooms")
     op.drop_index("ix_live_rooms_status", table_name="live_rooms")
     op.drop_table("live_rooms")

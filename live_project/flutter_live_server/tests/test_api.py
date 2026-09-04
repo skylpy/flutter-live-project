@@ -9,6 +9,7 @@ from app.models.live_room import LiveRoom
 
 
 class FakeLiveRoomService:
+    """测试替身：让 API 测试只验证路由和响应格式，不依赖 MySQL 数据。"""
     room = LiveRoom(
         id=1,
         title="测试直播",
@@ -33,6 +34,7 @@ class FakeLiveRoomService:
 
 
 def test_live_api_response_and_not_found() -> None:
+    """验证成功响应的 camelCase 和统一 404 响应。"""
     app.dependency_overrides[get_live_room_service] = FakeLiveRoomService
     try:
         with TestClient(app) as client:

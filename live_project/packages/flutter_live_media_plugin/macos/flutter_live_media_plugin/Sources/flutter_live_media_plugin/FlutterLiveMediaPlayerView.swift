@@ -2,6 +2,7 @@ import AVFoundation
 import Cocoa
 import FlutterMacOS
 
+/// 创建 macOS PlatformView，并把 View 交给播放器插件绑定当前 AVPlayer。
 final class FlutterLiveMediaPlayerViewFactory: NSObject, FlutterPlatformViewFactory {
   private let onViewCreated: (FlutterLiveMediaPlayerView) -> Void
 
@@ -21,11 +22,13 @@ final class FlutterLiveMediaPlayerViewFactory: NSObject, FlutterPlatformViewFact
   }
 }
 
+/// macOS 的原生视频渲染容器；不直接实现播放和重连。
 final class FlutterLiveMediaPlayerView: NSView {
   private var playerLayer: AVPlayerLayer?
   private let label = NSTextField(labelWithString: "AVPlayer")
 
   override init(frame frameRect: NSRect) {
+    // 先显示占位文字；插件绑定 AVPlayer 后再显示视频 layer。
     super.init(frame: frameRect)
     wantsLayer = true
     layer?.backgroundColor = NSColor.black.cgColor
@@ -45,6 +48,7 @@ final class FlutterLiveMediaPlayerView: NSView {
   }
 
   func setPlayer(_ player: AVPlayer?) {
+    // 绑定新播放器前移除旧 layer，保证同一视图只有一个视频画面。
     playerLayer?.removeFromSuperlayer()
     playerLayer = nil
     label.isHidden = player != nil

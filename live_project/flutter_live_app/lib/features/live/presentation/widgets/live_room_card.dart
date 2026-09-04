@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../data/models/live_room.dart';
 
+/// 首页直播卡片。
+///
+/// coverUrl 为空时使用本地占位，不请求网络图片；有地址时才创建 Image.network。
 class LiveRoomCard extends StatelessWidget {
   const LiveRoomCard({required this.room, required this.onTap, super.key});
 

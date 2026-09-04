@@ -1,4 +1,6 @@
-"""create users
+"""创建用户表。
+
+password_hash 保存密码哈希，绝不保存用户明文密码。
 
 Revision ID: 0002_create_users
 Revises: 0001_create_live_rooms
@@ -16,6 +18,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """创建 users 表和用户名索引。"""
     op.create_table(
         "users",
         sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
@@ -32,5 +35,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """回滚本次迁移，删除用户表及索引。"""
     op.drop_index("ix_users_username", table_name="users")
     op.drop_table("users")

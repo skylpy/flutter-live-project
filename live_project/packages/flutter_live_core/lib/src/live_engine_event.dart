@@ -1,5 +1,6 @@
 import 'package:meta/meta.dart';
 
+/// 播放/推流引擎向 Flutter 汇报的状态类型。
 enum LiveEngineEventType {
   initialized,
   playRequested,
@@ -14,6 +15,10 @@ enum LiveEngineEventType {
   error,
 }
 
+/// 一次引擎状态变化。
+///
+/// Flutter 不需要判断底层是 AVPlayer、ExoPlayer 还是其他 SDK，只根据
+/// type 和 message 更新 UI 或业务状态。
 @immutable
 final class LiveEngineEvent {
   const LiveEngineEvent({required this.type, this.message, this.timestamp});

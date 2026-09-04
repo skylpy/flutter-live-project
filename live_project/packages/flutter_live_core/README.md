@@ -1,5 +1,7 @@
 # flutter_live_core
 
+先阅读项目根目录的 [ARCHITECTURE.md](../../ARCHITECTURE.md)，再阅读 `lib/src/live_engine.dart`。这个包是 Flutter 与原生播放器之间的稳定抽象层。
+
 跨平台直播媒体引擎的 Flutter 侧协议包。
 
 当前只提供平台无关的 `LiveEngine` 接口、事件模型和 `StubLiveEngine`，不会打开摄像头、不会播放或推送真实媒体流。后续可以在 Flutter Plugin 中分别实现 iOS Swift、Android Kotlin 和 HarmonyOS / OpenHarmony ArkTS 适配层。

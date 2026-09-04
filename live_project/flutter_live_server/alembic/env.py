@@ -1,3 +1,9 @@
+"""Alembic 迁移运行环境。
+
+导入所有模型后，Base.metadata 才包含完整表结构，autogenerate 或迁移执行
+才能正确识别 live_rooms 和 users。
+"""
+
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
@@ -18,6 +24,7 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
+    """不建立数据库连接，生成可执行的 SQL 迁移语句。"""
     context.configure(
         url=settings.database_url,
         target_metadata=target_metadata,
@@ -29,6 +36,7 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    """建立真实数据库连接并执行迁移。"""
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",

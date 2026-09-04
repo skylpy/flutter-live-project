@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../controllers/auth_controller.dart';
 
+/// 登录和注册共用的页面。
+///
+/// 页面只收集输入并调用 Controller；真正的网络请求和 Token 保存不放在 UI 中。
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
 
@@ -108,6 +111,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 
   Future<void> _submit() async {
+    // 根据当前模式调用同一个 AuthController 的登录或注册方法。
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
     if (_registerMode) {

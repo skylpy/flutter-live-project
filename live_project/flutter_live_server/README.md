@@ -1,5 +1,9 @@
 # flutter_live_server
 
+建议先阅读项目根目录的 [ARCHITECTURE.md](../ARCHITECTURE.md)。服务端的基本链路是：Endpoint → Service → Repository → MySQL/Redis，Pydantic Schema 负责输入校验和输出格式。
+
+`/live/ws/rooms/{room_id}` 只承载认证、弹幕和在线人数，不传输视频二进制；视频应由专业媒体服务/CDN 分发。
+
 FastAPI 直播后端第二阶段，使用 SQLAlchemy 2.x + MySQL 8 + Alembic + Redis。要求 Python 3.11+。
 
 ```bash

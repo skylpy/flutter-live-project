@@ -1,3 +1,7 @@
+/// 客户端表示一个直播间的模型。
+///
+/// fromJson 兼容后端 camelCase 和数据库常见的 snake_case，并为缺失字段提供
+/// 安全默认值，避免不完整数据直接导致页面崩溃。
 class LiveRoom {
   const LiveRoom({
     required this.id,
@@ -26,6 +30,7 @@ class LiveRoom {
   final DateTime? updatedAt;
 
   factory LiveRoom.fromJson(Map<String, Object?> json) {
+    // 所有服务端字段在这里集中转换，页面只使用类型明确的 Dart 字段。
     return LiveRoom(
       id: _int(json['id']),
       title: _string(json['title']),
@@ -42,6 +47,7 @@ class LiveRoom {
   }
 
   Map<String, Object?> toJson() {
+    // toJson 方便缓存、日志和后续向其他接口传递房间快照。
     return <String, Object?>{
       'id': id,
       'title': title,

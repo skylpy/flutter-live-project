@@ -17,6 +17,10 @@ async def room_websocket(
     room_id: int,
     token: Optional[str] = Query(default=None),
 ) -> None:
+    """一个直播间的弹幕 WebSocket 入口。
+
+    视频不经过此连接；该连接只负责用户认证、聊天消息、在线人数和 Redis 广播。
+    """
     user_id, username = _user_from_token(token)
     if user_id is None or username is None:
         await websocket.close(code=1008, reason="unauthorized")
@@ -42,6 +46,7 @@ async def room_websocket(
     )
     try:
         while True:
+            # 客户端每条消息都重新解析和校验，不能信任客户端传来的用户名或房间号。
             raw_message = await websocket.receive_text()
             payload = json.loads(raw_message)
             if payload.get("type") != "chat":
@@ -67,6 +72,7 @@ async def room_websocket(
     except (WebSocketDisconnect, json.JSONDecodeError):
         pass
     finally:
+        # 无论客户端正常关闭还是异常断开，都要撤销在线人数并广播离开事件。
         if relay_task is not None:
             relay_task.cancel()
         online_count = await room_realtime_hub.presence.leave(room_id, user_id)
@@ -85,6 +91,7 @@ async def room_websocket(
 
 
 def _user_from_token(token: Optional[str]) -> tuple[Optional[int], Optional[str]]:
+    """从 WebSocket 查询参数解析用户身份；失败时返回两个 None。"""
     if not token:
         return None, None
     try:
