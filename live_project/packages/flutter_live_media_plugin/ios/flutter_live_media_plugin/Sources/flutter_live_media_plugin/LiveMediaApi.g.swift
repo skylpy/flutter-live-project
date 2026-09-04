@@ -55,6 +55,10 @@ private func wrapError(_ error: Any) -> [Any?] {
   ]
 }
 
+private func createConnectionError(withChannelName channelName: String) -> PigeonError {
+  return PigeonError(code: "channel-error", message: "Unable to establish connection on channel: '\(channelName)'.", details: "")
+}
+
 enum LiveMediaApiPigeonInternal {
   static func isNullish(_ value: Any?) -> Bool {
     guard let innerValue = value else {
@@ -184,6 +188,16 @@ private func nilOrValue<T>(_ value: Any?) -> T? {
 }
 
 
+enum LiveMediaEventType: Int, CaseIterable {
+  case initialized = 0
+  case playing = 1
+  case buffering = 2
+  case completed = 3
+  case reconnecting = 4
+  case stopped = 5
+  case error = 6
+}
+
 /// Generated class from Pigeon that represents data sent in messages.
 struct LiveEngineConfiguration: Hashable, CustomStringConvertible {
   var enableHardwareAcceleration: Bool? = nil
@@ -219,11 +233,64 @@ struct LiveEngineConfiguration: Hashable, CustomStringConvertible {
   }
 }
 
+/// Generated class from Pigeon that represents data sent in messages.
+struct LiveMediaEvent: Hashable, CustomStringConvertible {
+  var type: LiveMediaEventType
+  var message: String? = nil
+  var retryCount: Int64? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> LiveMediaEvent? {
+    let type = pigeonVar_list[0] as! LiveMediaEventType
+    let message: String? = nilOrValue(pigeonVar_list[1])
+    let retryCount: Int64? = nilOrValue(pigeonVar_list[2])
+
+    return LiveMediaEvent(
+      type: type,
+      message: message,
+      retryCount: retryCount
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      type,
+      message,
+      retryCount,
+    ]
+  }
+  static func == (lhs: LiveMediaEvent, rhs: LiveMediaEvent) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return LiveMediaApiPigeonInternal.deepEquals(lhs.type, rhs.type) && LiveMediaApiPigeonInternal.deepEquals(lhs.message, rhs.message) && LiveMediaApiPigeonInternal.deepEquals(lhs.retryCount, rhs.retryCount)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("LiveMediaEvent")
+    LiveMediaApiPigeonInternal.deepHash(value: type, hasher: &hasher)
+    LiveMediaApiPigeonInternal.deepHash(value: message, hasher: &hasher)
+    LiveMediaApiPigeonInternal.deepHash(value: retryCount, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "LiveMediaEvent(type: \(String(describing: type)), message: \(String(describing: message)), retryCount: \(String(describing: retryCount)))"
+  }
+}
+
 private class LiveMediaApiPigeonCodecReader: FlutterStandardReader {
   override func readValue(ofType type: UInt8) -> Any? {
     switch type {
     case 129:
+      let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
+      if let enumResultAsInt = enumResultAsInt {
+        return LiveMediaEventType(rawValue: enumResultAsInt)
+      }
+      return nil
+    case 130:
       return LiveEngineConfiguration.fromList(self.readValue() as! [Any?])
+    case 131:
+      return LiveMediaEvent.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
     }
@@ -232,8 +299,14 @@ private class LiveMediaApiPigeonCodecReader: FlutterStandardReader {
 
 private class LiveMediaApiPigeonCodecWriter: FlutterStandardWriter {
   override func writeValue(_ value: Any) {
-    if let value = value as? LiveEngineConfiguration {
+    if let value = value as? LiveMediaEventType {
       super.writeByte(129)
+      super.writeValue(value.rawValue)
+    } else if let value = value as? LiveEngineConfiguration {
+      super.writeByte(130)
+      super.writeValue(value.toList())
+    } else if let value = value as? LiveMediaEvent {
+      super.writeByte(131)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -317,6 +390,42 @@ class LiveMediaHostApiSetup {
       }
     } else {
       stopChannel.setMessageHandler(nil)
+    }
+  }
+}
+
+/// Generated protocol from Pigeon that represents Flutter messages that can be called from Swift.
+protocol LiveMediaFlutterApiProtocol {
+  func onEvent(event eventArg: LiveMediaEvent) async throws
+}
+class LiveMediaFlutterApi: LiveMediaFlutterApiProtocol {
+  private let binaryMessenger: FlutterBinaryMessenger
+  private let messageChannelSuffix: String
+  init(binaryMessenger: FlutterBinaryMessenger, messageChannelSuffix: String = "") {
+    self.binaryMessenger = binaryMessenger
+    self.messageChannelSuffix = messageChannelSuffix.count > 0 ? ".\(messageChannelSuffix)" : ""
+  }
+  var codec: LiveMediaApiPigeonCodec {
+    return LiveMediaApiPigeonCodec.shared
+  }
+  func onEvent(event eventArg: LiveMediaEvent) async throws {
+    return try await withCheckedThrowingContinuation { continuation in
+      let channelName: String = "dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaFlutterApi.onEvent\(messageChannelSuffix)"
+      let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+      channel.sendMessage([eventArg] as [Any?]) { response in
+        guard let listResponse = response as? [Any?] else {
+          continuation.resume(throwing: createConnectionError(withChannelName: channelName))
+          return
+        }
+        if listResponse.count > 1 {
+          let code: String = listResponse[0] as! String
+          let message: String? = nilOrValue(listResponse[1])
+          let details: String? = nilOrValue(listResponse[2])
+          continuation.resume(throwing: PigeonError(code: code, message: message, details: details))
+        } else {
+          continuation.resume()
+        }
+      }
     }
   }
 }

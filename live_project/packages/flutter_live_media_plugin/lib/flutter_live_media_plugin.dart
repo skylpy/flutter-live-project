@@ -32,7 +32,9 @@ final class FlutterLiveMediaPlayerView extends StatelessWidget {
 /// contract used by the application.
 final class FlutterLiveMediaEngine implements LiveEngine {
   FlutterLiveMediaEngine({LiveMediaHostApi? api})
-    : _api = api ?? LiveMediaHostApi();
+    : _api = api ?? LiveMediaHostApi() {
+    LiveMediaFlutterApi.setUp(_NativeEventHandler(_handleNativeEvent));
+  }
 
   final LiveMediaHostApi _api;
   final StreamController<LiveEngineEvent> _events =
@@ -51,6 +53,23 @@ final class FlutterLiveMediaEngine implements LiveEngine {
       return;
     }
     _emit(LiveEngineEventType.initialized, '原生媒体引擎已初始化');
+  }
+
+  void _handleNativeEvent(LiveMediaEvent event) {
+    final type = switch (event.type) {
+      LiveMediaEventType.initialized => LiveEngineEventType.initialized,
+      LiveMediaEventType.playing => LiveEngineEventType.playing,
+      LiveMediaEventType.buffering => LiveEngineEventType.buffering,
+      LiveMediaEventType.completed => LiveEngineEventType.completed,
+      LiveMediaEventType.reconnecting => LiveEngineEventType.reconnecting,
+      LiveMediaEventType.stopped => LiveEngineEventType.stopped,
+      LiveMediaEventType.error => LiveEngineEventType.error,
+    };
+    final message = event.message ?? '原生播放器状态已更新';
+    final retryMessage = event.retryCount == null
+        ? message
+        : '$message（第 ${event.retryCount} 次）';
+    _emit(type, retryMessage);
   }
 
   @override
@@ -101,6 +120,7 @@ final class FlutterLiveMediaEngine implements LiveEngine {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
+    LiveMediaFlutterApi.setUp(null);
     await _events.close();
   }
 
@@ -113,4 +133,13 @@ final class FlutterLiveMediaEngine implements LiveEngine {
   void _ensureUsable() {
     if (_disposed) throw StateError('FlutterLiveMediaEngine 已释放');
   }
+}
+
+final class _NativeEventHandler extends LiveMediaFlutterApi {
+  _NativeEventHandler(this.callback);
+
+  final void Function(LiveMediaEvent event) callback;
+
+  @override
+  void onEvent(LiveMediaEvent event) => callback(event);
 }

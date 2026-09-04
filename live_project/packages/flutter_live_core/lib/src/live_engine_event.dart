@@ -3,6 +3,10 @@ import 'package:meta/meta.dart';
 enum LiveEngineEventType {
   initialized,
   playRequested,
+  playing,
+  buffering,
+  completed,
+  reconnecting,
   stopped,
   previewRequested,
   pushRequested,

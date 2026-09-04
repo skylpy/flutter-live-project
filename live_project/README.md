@@ -87,4 +87,4 @@ iOS Simulator / macOS 可使用默认的 `localhost`；真机和 HarmonyOS 真�
 
 ## 下一阶段建议
 
-下一步可在 Apple 平台补充播放器状态回调和 HLS 弱网策略，再补充 Android Kotlin 播放器实现；媒体分发应由专业媒体服务/CDN 承担，不经过 FastAPI 转发视频二进制流。
+下一步可在 Apple 平台完善播放器状态机和 HLS 弱网策略配置，再补充 Android Kotlin 播放器实现；媒体分发应由专业媒体服务/CDN 承担，不经过 FastAPI 转发视频二进制流。

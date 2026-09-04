@@ -28,6 +28,8 @@ class _FakeLiveMediaHostApi extends LiveMediaHostApi {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('engine delegates playback lifecycle to the host API', () async {
     final api = _FakeLiveMediaHostApi();
     final engine = FlutterLiveMediaEngine(api: api);

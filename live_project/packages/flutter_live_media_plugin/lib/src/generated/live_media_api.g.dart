@@ -34,6 +34,20 @@ Object? _extractReplyValueOrThrow(
   return replyList.firstOrNull;
 }
 
+List<Object?> wrapResponse({
+  Object? result,
+  PlatformException? error,
+  bool empty = false,
+}) {
+  if (empty) {
+    return <Object?>[];
+  }
+  if (error == null) {
+    return <Object?>[result];
+  }
+  return <Object?>[error.code, error.message, error.details];
+}
+
 bool _deepEquals(Object? a, Object? b) {
   if (identical(a, b)) {
     return true;
@@ -97,6 +111,16 @@ int _deepHash(Object? value) {
   return value.hashCode;
 }
 
+enum LiveMediaEventType {
+  initialized,
+  playing,
+  buffering,
+  completed,
+  reconnecting,
+  stopped,
+  error,
+}
+
 class LiveEngineConfiguration {
   LiveEngineConfiguration({this.enableHardwareAcceleration = true});
 
@@ -142,6 +166,56 @@ class LiveEngineConfiguration {
   }
 }
 
+class LiveMediaEvent {
+  LiveMediaEvent({required this.type, this.message, this.retryCount});
+
+  LiveMediaEventType type;
+
+  String? message;
+
+  int? retryCount;
+
+  List<Object?> _toList() {
+    return <Object?>[type, message, retryCount];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static LiveMediaEvent decode(Object result) {
+    result as List<Object?>;
+    return LiveMediaEvent(
+      type: result[0]! as LiveMediaEventType,
+      message: result[1] as String?,
+      retryCount: result[2] as int?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! LiveMediaEvent || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(type, other.type) &&
+        _deepEquals(message, other.message) &&
+        _deepEquals(retryCount, other.retryCount);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'LiveMediaEvent(type: $type, message: $message, retryCount: $retryCount)';
+  }
+}
+
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
   @override
@@ -149,8 +223,14 @@ class _PigeonCodec extends StandardMessageCodec {
     if (value is int) {
       buffer.putUint8(4);
       buffer.putInt64(value);
-    } else if (value is LiveEngineConfiguration) {
+    } else if (value is LiveMediaEventType) {
       buffer.putUint8(129);
+      writeValue(buffer, value.index);
+    } else if (value is LiveEngineConfiguration) {
+      buffer.putUint8(130);
+      writeValue(buffer, value.encode());
+    } else if (value is LiveMediaEvent) {
+      buffer.putUint8(131);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -161,7 +241,12 @@ class _PigeonCodec extends StandardMessageCodec {
   Object? readValueOfType(int type, ReadBuffer buffer) {
     switch (type) {
       case 129:
+        final value = readValue(buffer) as int?;
+        return value == null ? null : LiveMediaEventType.values[value];
+      case 130:
         return LiveEngineConfiguration.decode(readValue(buffer)!);
+      case 131:
+        return LiveMediaEvent.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -244,5 +329,46 @@ class LiveMediaHostApi {
       isNullValid: false,
     );
     return pigeonVar_replyValue! as bool;
+  }
+}
+
+abstract class LiveMediaFlutterApi {
+  static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
+
+  void onEvent(LiveMediaEvent event);
+
+  static void setUp(
+    LiveMediaFlutterApi? api, {
+    BinaryMessenger? binaryMessenger,
+    String messageChannelSuffix = '',
+  }) {
+    messageChannelSuffix = messageChannelSuffix.isNotEmpty
+        ? '.$messageChannelSuffix'
+        : '';
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaFlutterApi.onEvent$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final LiveMediaEvent arg_event = args[0]! as LiveMediaEvent;
+          try {
+            api.onEvent(arg_event);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
   }
 }

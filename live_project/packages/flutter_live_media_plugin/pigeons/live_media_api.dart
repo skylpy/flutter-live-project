@@ -15,6 +15,24 @@ class LiveEngineConfiguration {
   bool? enableHardwareAcceleration;
 }
 
+enum LiveMediaEventType {
+  initialized,
+  playing,
+  buffering,
+  completed,
+  reconnecting,
+  stopped,
+  error,
+}
+
+class LiveMediaEvent {
+  LiveMediaEvent({required this.type, this.message, this.retryCount});
+
+  LiveMediaEventType type;
+  String? message;
+  int? retryCount;
+}
+
 @HostApi()
 abstract class LiveMediaHostApi {
   @async
@@ -25,4 +43,9 @@ abstract class LiveMediaHostApi {
 
   @async
   bool stop();
+}
+
+@FlutterApi()
+abstract class LiveMediaFlutterApi {
+  void onEvent(LiveMediaEvent event);
 }
