@@ -1,0 +1,4 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+  package="com.skylpy.flutter_live_media_plugin">
+  <uses-permission android:name="android.permission.INTERNET" />
+</manifest>

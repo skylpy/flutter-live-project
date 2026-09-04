@@ -19,7 +19,7 @@ class PluginExampleApp extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text('Dart ↔ Pigeon ↔ Swift 通信占位'),
+              const Text('Dart ↔ Pigeon ↔ 原生播放器通信占位'),
               const SizedBox(height: 16),
               Expanded(child: _NativePlayerView()),
             ],
@@ -39,9 +39,12 @@ class _NativePlayerView extends StatelessWidget {
     if (defaultTargetPlatform == TargetPlatform.macOS) {
       return const FlutterLiveMediaPlayerView();
     }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return const FlutterLiveMediaPlayerView();
+    }
     return const ColoredBox(
       color: Colors.black,
-      child: Center(child: Text('当前示例仅支持 iOS / macOS')),
+      child: Center(child: Text('当前示例仅支持 iOS / macOS / Android')),
     );
   }
 }

@@ -6,7 +6,7 @@ import 'package:flutter_live_core/flutter_live_core.dart';
 
 import 'src/generated/live_media_api.g.dart';
 
-/// Embeds the registered native player view on Apple platforms.
+/// Embeds the registered native player view on supported native platforms.
 final class FlutterLiveMediaPlayerView extends StatelessWidget {
   const FlutterLiveMediaPlayerView({super.key});
 
@@ -17,6 +17,9 @@ final class FlutterLiveMediaPlayerView extends StatelessWidget {
     }
     if (defaultTargetPlatform == TargetPlatform.macOS) {
       return const AppKitView(viewType: 'flutter_live_media_player_view');
+    }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return const AndroidView(viewType: 'flutter_live_media_player_view');
     }
     return const ColoredBox(
       color: Color(0xFF080808),

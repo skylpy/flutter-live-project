@@ -37,6 +37,9 @@ flutter:
   # adding or updating assets for this project.
   plugin:
     platforms:
+      android:
+        package: com.skylpy.flutter_live_media_plugin
+        pluginClass: FlutterLiveMediaPlugin
       ios:
         pluginClass: FlutterLiveMediaPlugin
       macos:

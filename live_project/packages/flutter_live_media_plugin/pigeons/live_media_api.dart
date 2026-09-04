@@ -4,6 +4,10 @@ import 'package:pigeon/pigeon.dart';
   PigeonOptions(
     dartOut: 'lib/src/generated/live_media_api.g.dart',
     dartOptions: DartOptions(),
+    kotlinOut: 'android/src/main/kotlin/com/skylpy/flutter_live_media_plugin/LiveMediaApi.g.kt',
+    kotlinOptions: KotlinOptions(
+      package: 'com.skylpy.flutter_live_media_plugin',
+    ),
     swiftOut: 'ios/flutter_live_media_plugin/Sources/flutter_live_media_plugin/LiveMediaApi.g.swift',
     swiftOptions: SwiftOptions(),
     dartPackageName: 'flutter_live_media_plugin',

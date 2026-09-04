@@ -8,7 +8,7 @@ live_project/
 ├── flutter_live_server/  # FastAPI / SQLAlchemy / MySQL / Alembic
 └── packages/
     ├── flutter_live_core/          # LiveEngine 跨平台协议与 Stub 实现
-    └── flutter_live_media_plugin/  # iOS/macOS Pigeon + PlatformView + AVPlayer
+    └── flutter_live_media_plugin/  # iOS/macOS/Android Pigeon + PlatformView + 原生播放器
 ```
 
 当前已完成第一阶段 REST 闭环、第二阶段认证与实时基础能力、第三阶段媒体引擎抽象层、第四阶段 iOS/macOS Plugin 通信与 PlatformView 占位闭环，以及第五阶段 Apple 平台 AVPlayer 播放链路；推流和拉流协议适配仍未实现。
@@ -80,6 +80,7 @@ iOS Simulator / macOS 可使用默认的 `localhost`；真机和 HarmonyOS 真�
 - 第三阶段：独立 `flutter_live_core`、`LiveEngine` 接口、生命周期事件模型和 `StubLiveEngine`；直播间已通过 Provider 使用可替换的媒体引擎边界
 - 第四阶段：iOS/macOS Swift Plugin、Pigeon 生成的 Dart/Swift API、原生 PlatformView 占位视图；Flutter 直播间已嵌入可替换的原生视图
 - 第五阶段：iOS/macOS 使用系统 AVPlayer 播放 HTTP/HTTPS 地址，并通过 AVPlayerLayer 渲染到 PlatformView
+- 第六阶段：Android 使用 Kotlin + Media3 ExoPlayer 播放 HTTP/HTTPS 地址，并通过 PlayerView 渲染到 PlatformView；复用同一套 Pigeon 事件和 LiveEngine 抽象
 
 ## 暂未实现
 
@@ -87,4 +88,4 @@ iOS Simulator / macOS 可使用默认的 `localhost`；真机和 HarmonyOS 真�
 
 ## 下一阶段建议
 
-下一步可在 Apple 平台完善播放器状态机和 HLS 弱网策略配置，再补充 Android Kotlin 播放器实现；媒体分发应由专业媒体服务/CDN 承担，不经过 FastAPI 转发视频二进制流。
+下一步可补充 Android 播放器状态机测试、HLS 弱网策略配置，再进入 HarmonyOS / OpenHarmony ArkTS 适配；媒体分发应由专业媒体服务/CDN 承担，不经过 FastAPI 转发视频二进制流。

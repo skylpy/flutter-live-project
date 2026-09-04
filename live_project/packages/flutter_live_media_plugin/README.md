@@ -2,12 +2,14 @@
 
 iOS/macOS 原生媒体引擎的 Flutter Plugin 边界。
 
-当前版本完成 Apple 平台的最小播放链路：
+当前版本完成 Apple 和 Android 平台的最小播放链路：
 
-- Pigeon 生成 Dart ↔ Swift 的初始化、播放请求、停止请求接口
+- Pigeon 生成 Dart ↔ Swift/Kotlin 的初始化、播放请求、停止请求接口
 - 注册 `flutter_live_media_player_view` PlatformView
 - Swift 侧使用系统 `AVPlayer` 播放 HTTP/HTTPS 地址
+- Android 侧使用 Media3 ExoPlayer 播放 HTTP/HTTPS 地址
 - PlatformView 使用 `AVPlayerLayer` 渲染视频
+- Android PlatformView 使用 Media3 `PlayerView` 渲染视频
 - Pigeon FlutterApi 回传 initialized、playing、buffering、completed、error、reconnecting、stopped 状态
 - 监听播放失败和卡顿，按 1s、2s、4s 进行最多 3 次重连
 - 不打开摄像头，也不处理 RTMP/HTTP-FLV/WebRTC
@@ -18,7 +20,7 @@ iOS/macOS 原生媒体引擎的 Flutter Plugin 边界。
 dart run pigeon --input pigeons/live_media_api.dart
 ```
 
-当前建议使用 HLS 地址验证播放。后续替换 `FlutterLiveMediaEngine` 的 Swift 实现即可接入具体直播 SDK，Flutter 业务层无需改动。重连次数、退避策略和播放器状态机将在接入真实直播 SDK 时进一步抽象为配置。
+当前建议使用 HLS 地址验证播放。后续替换 `FlutterLiveMediaEngine` 的 Swift/Kotlin 实现即可接入具体直播 SDK，Flutter 业务层无需改动。重连次数、退避策略和播放器状态机将在接入真实直播 SDK 时进一步抽象为配置。
 
 A new Flutter plugin project.
 
