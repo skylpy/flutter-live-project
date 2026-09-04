@@ -2,12 +2,13 @@
 
 iOS 原生媒体引擎的 Flutter Plugin 边界。
 
-当前版本只完成通信和视图占位：
+当前版本完成 Apple 平台的最小播放链路：
 
 - Pigeon 生成 Dart ↔ Swift 的初始化、播放请求、停止请求接口
 - 注册 `flutter_live_media_player_view` PlatformView
-- Swift 侧提供黑色播放器占位视图
-- 不接入真实播放器 SDK，不打开摄像头，也不处理 RTMP/HLS/WebRTC
+- Swift 侧使用系统 `AVPlayer` 播放 HTTP/HTTPS 地址
+- PlatformView 使用 `AVPlayerLayer` 渲染视频
+- 不打开摄像头，也不处理 RTMP/HTTP-FLV/WebRTC
 
 生成 Pigeon 文件：
 
@@ -15,7 +16,7 @@ iOS 原生媒体引擎的 Flutter Plugin 边界。
 dart run pigeon --input pigeons/live_media_api.dart
 ```
 
-后续替换 `FlutterLiveMediaEngine` 的 Swift 实现即可接入具体播放器，Flutter 业务层无需改动。
+当前建议使用 HLS 地址验证播放。后续替换 `FlutterLiveMediaEngine` 的 Swift 实现即可接入具体直播 SDK，Flutter 业务层无需改动。
 
 A new Flutter plugin project.
 

@@ -8,10 +8,10 @@ live_project/
 ├── flutter_live_server/  # FastAPI / SQLAlchemy / MySQL / Alembic
 └── packages/
     ├── flutter_live_core/          # LiveEngine 跨平台协议与 Stub 实现
-    └── flutter_live_media_plugin/  # iOS/macOS Pigeon + PlatformView 边界
+    └── flutter_live_media_plugin/  # iOS/macOS Pigeon + PlatformView + AVPlayer
 ```
 
-当前已完成第一阶段 REST 闭环、第二阶段认证与实时基础能力、第三阶段媒体引擎抽象层，以及第四阶段 iOS/macOS Plugin 通信与 PlatformView 占位闭环；真实播放器、推流和拉流仍未实现。
+当前已完成第一阶段 REST 闭环、第二阶段认证与实时基础能力、第三阶段媒体引擎抽象层、第四阶段 iOS/macOS Plugin 通信与 PlatformView 占位闭环，以及第五阶段 Apple 平台 AVPlayer 播放链路；推流和拉流协议适配仍未实现。
 
 ## 后端快速开始
 
@@ -79,11 +79,12 @@ iOS Simulator / macOS 可使用默认的 `localhost`；真机和 HarmonyOS 真�
 - 第二阶段：用户注册/登录、JWT、Redis 在线人数、带 JWT 的直播间 WebSocket 弹幕
 - 第三阶段：独立 `flutter_live_core`、`LiveEngine` 接口、生命周期事件模型和 `StubLiveEngine`；直播间已通过 Provider 使用可替换的媒体引擎边界
 - 第四阶段：iOS/macOS Swift Plugin、Pigeon 生成的 Dart/Swift API、原生 PlatformView 占位视图；Flutter 直播间已嵌入可替换的原生视图
+- 第五阶段：iOS/macOS 使用系统 AVPlayer 播放 HTTP/HTTPS 地址，并通过 AVPlayerLayer 渲染到 PlatformView
 
 ## 暂未实现
 
-礼物、推流、拉流、RTMP、HTTP-FLV、HLS、WebRTC、真实播放器 SDK、Kotlin、ArkTS、HarmonyOS、连麦、PK、AI 审核和直播摘要。
+礼物、推流、拉流、RTMP、HTTP-FLV、WebRTC、真实第三方直播 SDK、Kotlin、ArkTS、HarmonyOS、连麦、PK、AI 审核和直播摘要。
 
 ## 下一阶段建议
 
-下一步可在 iOS/macOS Plugin 中接入真实播放器 SDK，再补充 Android Kotlin 实现；媒体分发应由专业媒体服务/CDN 承担，不经过 FastAPI 转发视频二进制流。
+下一步可在 Apple 平台补充播放器状态回调和 HLS 弱网策略，再补充 Android Kotlin 播放器实现；媒体分发应由专业媒体服务/CDN 承担，不经过 FastAPI 转发视频二进制流。

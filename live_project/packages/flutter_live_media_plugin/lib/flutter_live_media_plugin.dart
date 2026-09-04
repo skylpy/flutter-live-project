@@ -27,9 +27,9 @@ final class FlutterLiveMediaPlayerView extends StatelessWidget {
 
 /// iOS media-engine adapter.
 ///
-/// The native side currently exposes a placeholder PlatformView and records
-/// lifecycle requests only. A real player can be introduced without changing
-/// the [LiveEngine] contract used by the application.
+/// The native side owns an AVPlayer on Apple platforms. A different player
+/// implementation can be introduced without changing the [LiveEngine]
+/// contract used by the application.
 final class FlutterLiveMediaEngine implements LiveEngine {
   FlutterLiveMediaEngine({LiveMediaHostApi? api})
     : _api = api ?? LiveMediaHostApi();
@@ -45,7 +45,11 @@ final class FlutterLiveMediaEngine implements LiveEngine {
   @override
   Future<void> initialize() async {
     _ensureUsable();
-    await _api.initialize(LiveEngineConfiguration());
+    final initialized = await _api.initialize(LiveEngineConfiguration());
+    if (!initialized) {
+      _emit(LiveEngineEventType.error, '原生媒体引擎初始化失败');
+      return;
+    }
     _emit(LiveEngineEventType.initialized, '原生媒体引擎已初始化');
   }
 
@@ -56,14 +60,22 @@ final class FlutterLiveMediaEngine implements LiveEngine {
       _emit(LiveEngineEventType.error, '播放地址为空');
       return;
     }
-    await _api.play(url);
+    final accepted = await _api.play(url);
+    if (!accepted) {
+      _emit(LiveEngineEventType.error, '原生播放器不支持该播放地址');
+      return;
+    }
     _emit(LiveEngineEventType.playRequested, '已发送原生播放请求');
   }
 
   @override
   Future<void> stop() async {
     _ensureUsable();
-    await _api.stop();
+    final stopped = await _api.stop();
+    if (!stopped) {
+      _emit(LiveEngineEventType.error, '停止原生播放器失败');
+      return;
+    }
     _emit(LiveEngineEventType.stopped, '已发送停止播放请求');
   }
 
