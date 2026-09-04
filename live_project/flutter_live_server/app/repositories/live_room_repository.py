@@ -11,15 +11,14 @@ class LiveRoomRepository:
 
     Repository 只负责查询，不决定 HTTP 状态码，也不拼装 API 响应。
     """
+
     def __init__(self, db: Session) -> None:
         self.db = db
 
     def get_living_rooms(self) -> list[LiveRoom]:
         """按创建时间倒序返回正在直播的房间。"""
         statement = (
-            select(LiveRoom)
-            .where(LiveRoom.status == "living")
-            .order_by(LiveRoom.created_at.desc())
+            select(LiveRoom).where(LiveRoom.status == "living").order_by(LiveRoom.created_at.desc())
         )
         return list(self.db.scalars(statement).all())
 

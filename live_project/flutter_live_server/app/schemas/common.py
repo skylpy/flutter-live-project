@@ -10,6 +10,7 @@ class ApiResponse(BaseModel, Generic[T]):
 
     code=0 表示业务成功；data 的类型由泛型 T 决定，客户端可以统一解析。
     """
+
     code: int = 0
     message: str = "success"
     data: Optional[T] = None

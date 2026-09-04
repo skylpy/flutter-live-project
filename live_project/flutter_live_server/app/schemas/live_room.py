@@ -8,6 +8,7 @@ class LiveRoomResponse(BaseModel):
 
     serialization_alias 把 Python/数据库字段转换成 Flutter 更习惯的 camelCase。
     """
+
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: int

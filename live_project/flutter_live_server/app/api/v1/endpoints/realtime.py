@@ -54,9 +54,7 @@ async def room_websocket(
                 continue
             message = str(payload.get("message", "")).strip()
             if not message or len(message) > 200:
-                await websocket.send_json(
-                    {"type": "error", "message": "弹幕长度需为 1-200 个字符"}
-                )
+                await websocket.send_json({"type": "error", "message": "弹幕长度需为 1-200 个字符"})
                 continue
             await room_realtime_hub.publish(
                 room_id,

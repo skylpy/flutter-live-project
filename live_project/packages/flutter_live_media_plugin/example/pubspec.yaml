@@ -25,6 +25,11 @@ dependencies:
     # the parent directory to use the current plugin's version.
     path: ../
 
+  # 验收页直接展示 LiveEngineEvent，所以示例也声明 core 为直接依赖，
+  # 避免依赖插件内部的传递导出关系。
+  flutter_live_core:
+    path: ../../flutter_live_core
+
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8

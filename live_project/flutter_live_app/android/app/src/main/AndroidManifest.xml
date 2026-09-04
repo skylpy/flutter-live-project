@@ -2,7 +2,13 @@
     <application
         android:label="flutter_live_app"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
+        <!--
+            真机连接本地 FastAPI 时通常使用局域网 HTTP 地址；开发包允许明文流量，
+            便于用 Dart define（API_BASE_URL=http://局域网IP:8000/api/v1）验证。
+            生产包应改为 HTTPS，并移除该开发配置。
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -10,6 +10,7 @@ from app.models.live_room import LiveRoom
 
 class FakeLiveRoomService:
     """测试替身：让 API 测试只验证路由和响应格式，不依赖 MySQL 数据。"""
+
     room = LiveRoom(
         id=1,
         title="测试直播",

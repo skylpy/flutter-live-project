@@ -5,11 +5,15 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.View
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -24,7 +28,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 private const val PLAYER_VIEW_TYPE = "flutter_live_media_player_view"
+private const val LOG_TAG = "FlutterLiveMedia"
 private const val MAX_RECONNECT_ATTEMPTS = 3
+private const val FIRST_RECONNECT_DELAY_MILLIS = 1_000L
 
 /**
  * Flutter 插件入口。
@@ -66,6 +72,12 @@ private class AndroidLiveMediaEngine(
     // ExoPlayer 负责真正的媒体解析和播放；Flutter 只通过接口调用它。
     val player: ExoPlayer = ExoPlayer.Builder(context.applicationContext).build()
 
+    // HLS 的分片请求由 DefaultDataSource 统一发出。把 DataSourceFactory 保存下来，
+    // 重连时可以用完全相同的网络配置重新创建 HlsMediaSource，而不是复制一套请求代码。
+    private val hlsMediaSourceFactory = HlsMediaSource.Factory(
+        DefaultDataSource.Factory(context.applicationContext),
+    )
+
     private val eventApi = LiveMediaFlutterApi(messenger)
     private val eventScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -79,14 +91,28 @@ private class AndroidLiveMediaEngine(
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 when (playbackState) {
-                    Player.STATE_BUFFERING -> emit(LiveMediaEventType.BUFFERING, "播放器缓冲中")
-                    Player.STATE_READY -> emit(LiveMediaEventType.PLAYING, "播放器播放中")
-                    Player.STATE_ENDED -> emit(LiveMediaEventType.COMPLETED, "播放已完成")
+                    Player.STATE_BUFFERING -> {
+                        Log.d(LOG_TAG, "HLS playback state: BUFFERING")
+                        emit(LiveMediaEventType.BUFFERING, "播放器缓冲中")
+                    }
+                    Player.STATE_READY -> {
+                        // READY 表示当前媒体已经重新准备好。重连成功后必须清零次数，
+                        // 否则下一次独立的网络故障会错误地直接进入“次数耗尽”。
+                        cancelReconnect()
+                        reconnectAttempt = 0
+                        Log.i(LOG_TAG, "HLS playback state: READY, url=$currentUrl")
+                        emit(LiveMediaEventType.PLAYING, "播放器播放中")
+                    }
+                    Player.STATE_ENDED -> {
+                        Log.i(LOG_TAG, "HLS playback state: ENDED")
+                        emit(LiveMediaEventType.COMPLETED, "播放已完成")
+                    }
                 }
             }
 
             override fun onPlayerError(error: PlaybackException) {
                 // 先通知当前错误，再安排指数退避重连；这样 UI 可以立即显示网络异常。
+                Log.w(LOG_TAG, "HLS playback error: ${error.errorCodeName}", error)
                 emit(LiveMediaEventType.ERROR, error.message ?: error.errorCodeName)
                 scheduleReconnect()
             }
@@ -114,9 +140,12 @@ private class AndroidLiveMediaEngine(
         cancelReconnect()
         reconnectAttempt = 0
         currentUrl = normalizedUrl
-        // setMediaItem 只设置媒体项，prepare 才开始解析；playWhenReady 表示解析
-        // 成功后自动播放。真正 READY 的时刻由 listener 回调给 Flutter。
-        player.setMediaItem(MediaItem.fromUri(normalizedUrl))
+        Log.i(LOG_TAG, "HLS play requested: $normalizedUrl")
+        // 这里明确创建 HlsMediaSource，而不是依赖默认 MediaSourceFactory 猜格式。
+        // 这样带查询参数、没有 .m3u8 后缀的直播地址也能按 HLS 解析。
+        player.setMediaSource(createHlsMediaSource(normalizedUrl), true)
+        // prepare 触发清单和分片解析；playWhenReady 表示 READY 后自动开始播放。
+        // 真正的 playing 状态仍然由 Player.Listener 回调给 Flutter。
         player.prepare()
         player.playWhenReady = true
         return true
@@ -127,6 +156,7 @@ private class AndroidLiveMediaEngine(
         cancelReconnect()
         reconnectAttempt = 0
         currentUrl = null
+        Log.i(LOG_TAG, "HLS stop requested")
         player.stop()
         player.clearMediaItems()
         emit(LiveMediaEventType.STOPPED, "Android 播放器已停止")
@@ -135,6 +165,9 @@ private class AndroidLiveMediaEngine(
 
     private fun scheduleReconnect() {
         val url = currentUrl ?: return
+        // 同一次播放错误可能触发多个底层回调，已有任务时不能重复排队，
+        // 否则一个错误会同时启动多个播放器请求。
+        if (reconnectRunnable != null) return
         if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
             emit(LiveMediaEventType.ERROR, "播放器重连次数已耗尽")
             return
@@ -143,7 +176,8 @@ private class AndroidLiveMediaEngine(
         reconnectAttempt += 1
         val attempt = reconnectAttempt
         // 1s、2s、4s 的指数退避，避免网络故障时高频重试压垮服务端。
-        val delayMillis = 1000L shl (attempt - 1)
+        val delayMillis = FIRST_RECONNECT_DELAY_MILLIS shl (attempt - 1)
+        Log.i(LOG_TAG, "HLS reconnect scheduled: attempt=$attempt delayMs=$delayMillis")
         emit(
             LiveMediaEventType.RECONNECTING,
             "播放器将在 ${delayMillis / 1000} 秒后重连",
@@ -153,7 +187,10 @@ private class AndroidLiveMediaEngine(
         val runnable = Runnable {
             // 用户如果已经切换房间或停止播放，旧任务即使执行也不能重新播放。
             if (currentUrl != url) return@Runnable
-            player.setMediaItem(MediaItem.fromUri(url))
+            reconnectRunnable = null
+            Log.i(LOG_TAG, "HLS reconnect started: attempt=$attempt")
+            // 重连要重新创建 MediaSource，确保清单和分片请求从当前网络状态重新开始。
+            player.setMediaSource(createHlsMediaSource(url), true)
             player.prepare()
             player.playWhenReady = true
         }
@@ -164,6 +201,15 @@ private class AndroidLiveMediaEngine(
     private fun cancelReconnect() {
         reconnectRunnable?.let(mainHandler::removeCallbacks)
         reconnectRunnable = null
+    }
+
+    private fun createHlsMediaSource(url: String): HlsMediaSource {
+        // 显式声明 MIME 类型能让 Media3 在 URL 没有标准后缀时仍按 HLS 处理。
+        val mediaItem = MediaItem.Builder()
+            .setUri(url)
+            .setMimeType(MimeTypes.APPLICATION_M3U8)
+            .build()
+        return hlsMediaSourceFactory.createMediaSource(mediaItem)
     }
 
     private fun emit(type: LiveMediaEventType, message: String, retryCount: Int? = null) {

@@ -8,6 +8,7 @@ from .base import Base
 
 class User(Base):
     """登录用户表，密码只保存哈希值。"""
+
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)

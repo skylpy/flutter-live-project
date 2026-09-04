@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     字段默认值只服务于本地开发；部署环境应通过 `.env` 或环境变量覆盖密码、
     JWT 密钥和数据库地址。Pydantic Settings 负责类型转换和配置加载。
     """
+
     app_name: str = "Flutter Live Server"
     app_env: str = "development"
     debug: bool = True

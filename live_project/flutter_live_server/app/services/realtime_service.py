@@ -12,6 +12,7 @@ from app.core.redis import get_async_redis
 
 class PresenceService:
     """使用 Redis Set 记录直播间在线用户。"""
+
     def _key(self, room_id: int) -> str:
         return f"live:room:{room_id}:online_users"
 
@@ -39,6 +40,7 @@ class PresenceService:
 
 class RoomRealtimeHub:
     """管理房间 WebSocket 连接和 Redis Pub/Sub 转发。"""
+
     def __init__(self) -> None:
         self.presence = PresenceService()
         self._connections: dict[int, set[WebSocket]] = {}

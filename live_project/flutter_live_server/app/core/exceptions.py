@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 class AppException(Exception):
     """可以安全返回给客户端的业务异常。"""
+
     def __init__(self, message: str, code: int = 50000, status_code: int = 500) -> None:
         super().__init__(message)
         self.message = message
@@ -16,6 +17,7 @@ class AppException(Exception):
 
 class NotFoundException(AppException):
     """资源不存在时使用的 404 业务异常。"""
+
     def __init__(self, message: str = "资源不存在", code: int = 40400) -> None:
         super().__init__(message=message, code=code, status_code=404)
 
@@ -30,7 +32,9 @@ async def app_exception_handler(request: Request, exc: AppException) -> JSONResp
     return JSONResponse(status_code=exc.status_code, content=error_payload(exc.code, exc.message))
 
 
-async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
     """把 Pydantic 请求校验错误转换为统一格式。"""
     return JSONResponse(status_code=422, content=error_payload(42200, "请求数据校验失败"))
 

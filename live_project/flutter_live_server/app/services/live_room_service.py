@@ -8,6 +8,7 @@ class LiveRoomService:
 
     Service 负责把“找不到房间”转换为业务异常，Repository 只返回 None。
     """
+
     def __init__(self, repository: LiveRoomRepository) -> None:
         self.repository = repository
 

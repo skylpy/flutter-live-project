@@ -8,6 +8,7 @@ from app.models.user import User
 
 class UserRepository:
     """用户数据库访问层。"""
+
     def __init__(self, db: Session) -> None:
         self.db = db
 

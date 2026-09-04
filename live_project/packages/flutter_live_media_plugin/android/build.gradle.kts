@@ -75,9 +75,11 @@ kotlin {
 }
 
 dependencies {
-    // ExoPlayer 负责媒体解析和播放，PlayerView 负责把画面嵌入 PlatformView。
+    // ExoPlayer 负责播放器生命周期，PlayerView 负责把画面嵌入 PlatformView。
     implementation("androidx.media3:media3-exoplayer:1.6.1")
     implementation("androidx.media3:media3-ui:1.6.1")
+    // Media3 按协议拆分模块；HlsMediaSource 位于这个模块，不能只依赖核心播放器。
+    implementation("androidx.media3:media3-exoplayer-hls:1.6.1")
     // Pigeon 生成的 Kotlin HostApi 使用 suspend 函数，需要 Android 协程运行时。
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test")

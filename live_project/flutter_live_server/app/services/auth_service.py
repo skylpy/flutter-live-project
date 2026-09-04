@@ -9,6 +9,7 @@ from app.schemas.auth import AuthSessionResponse, UserRegisterRequest
 
 class AuthService:
     """认证业务层：注册、登录、Token 会话和用户状态校验。"""
+
     def __init__(self, repository: UserRepository) -> None:
         self.repository = repository
 
