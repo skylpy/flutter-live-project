@@ -12,7 +12,7 @@ void main() {
       onlineCount: 42,
       coverUrl: '',
       status: 'living',
-      playUrl: '',
+      playUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
       category: '技术',
     );
 
@@ -22,5 +22,6 @@ void main() {
     expect(restored.anchorName, '主播');
     expect(restored.onlineCount, 42);
     expect(restored.status, 'living');
+    expect(restored.playUrl, endsWith('.m3u8'));
   });
 }

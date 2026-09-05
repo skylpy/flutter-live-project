@@ -19,7 +19,7 @@ class FakeLiveRoomService:
         online_count=10,
         cover_url="",
         status="living",
-        play_url="",
+        play_url="https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
         category="技术",
         created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
@@ -46,6 +46,7 @@ def test_live_api_response_and_not_found() -> None:
 
     assert rooms_response.status_code == 200
     assert rooms_response.json()["data"][0]["anchorName"] == "主播"
+    assert rooms_response.json()["data"][0]["playUrl"].endswith(".m3u8")
     assert not_found_response.status_code == 404
     assert not_found_response.json() == {
         "code": 40401,
