@@ -61,6 +61,12 @@ final class FlutterLiveMediaEngine implements LiveEngine {
   }
 
   void _handleNativeEvent(LiveMediaEvent event) {
+    // 真机联调时把原生事件打印到 flutter run 控制台，便于确认 Pigeon
+    // 回调是否经过“原生播放器 → 插件 → Flutter 页面”完整链路。
+    debugPrint(
+      '[FlutterLiveMedia] native event=${event.type} '
+      'message=${event.message} retry=${event.retryCount}',
+    );
     // 原生枚举和 core 枚举值分开定义，避免 core 包依赖任何平台代码。
     final type = switch (event.type) {
       LiveMediaEventType.initialized => LiveEngineEventType.initialized,

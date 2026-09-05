@@ -1,8 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/config/environment.dart';
 import '../../../../core/network/api_provider.dart';
 import '../../data/datasources/live_remote_data_source.dart';
 import '../../data/models/live_room.dart';
+import '../../data/repositories/live_mock_repository.dart';
 import '../../data/repositories/live_repository_impl.dart';
 import '../../domain/repositories/live_repository.dart';
 
@@ -11,9 +13,14 @@ final liveRemoteDataSourceProvider = Provider<LiveRemoteDataSource>(
   (ref) => LiveRemoteDataSource(ref.watch(apiClientProvider)),
 );
 
-final liveRepositoryProvider = Provider<LiveRepository>(
-  (ref) => LiveRepositoryImpl(ref.watch(liveRemoteDataSourceProvider)),
-);
+final liveRepositoryProvider = Provider<LiveRepository>((ref) {
+  // Mock 只由编译参数显式打开，默认仍然使用真实后端，避免联调开关
+  // 不小心影响测试包或生产包的数据来源。
+  if (Environment.useMockLiveData) {
+    return const LiveMockRepository();
+  }
+  return LiveRepositoryImpl(ref.watch(liveRemoteDataSourceProvider));
+});
 
 /// 首页直播列表的 Riverpod 状态入口。
 final liveListControllerProvider =

@@ -50,6 +50,7 @@ class _LiveRoomContent extends ConsumerStatefulWidget {
 }
 
 class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
+  late final LiveEngine _engine;
   StreamSubscription<LiveEngineEvent>? _engineSubscription;
   String? _engineStatus;
 
@@ -57,7 +58,8 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
   void initState() {
     super.initState();
     // 监听平台无关的 LiveEngineEvent，页面不直接认识 AVPlayer/ExoPlayer。
-    _engineSubscription = ref.read(liveEngineProvider).events.listen((event) {
+    _engine = ref.read(liveEngineProvider);
+    _engineSubscription = _engine.events.listen((event) {
       if (!mounted || event.message == null) return;
       setState(() => _engineStatus = event.message);
     });
@@ -68,20 +70,21 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
   void dispose() {
     // 先取消事件订阅，再停止播放器，确保离开页面后没有异步回调更新已销毁 UI。
     _engineSubscription?.cancel();
-    ref.read(liveEngineProvider).stop();
+    // dispose 阶段不能再通过 ref 查找 Provider；_engine 是 initState 中保存的
+    // 同一个实例，既避免 Riverpod 生命周期断言，也保证停止的是当前播放器。
+    unawaited(_engine.stop());
     super.dispose();
   }
 
   Future<void> _prepareEngine() async {
     // 初始化和播放请求放在首帧之后，避免在 Widget 尚未挂载完成时创建 PlatformView。
-    final engine = ref.read(liveEngineProvider);
-    await engine.initialize();
+    await _engine.initialize();
     if (!mounted) return;
     if (widget.room.playUrl.isEmpty) {
       setState(() => _engineStatus = '未配置播放地址 · 等待原生播放器接入');
       return;
     }
-    await engine.play(widget.room.playUrl);
+    await _engine.play(widget.room.playUrl);
   }
 
   @override

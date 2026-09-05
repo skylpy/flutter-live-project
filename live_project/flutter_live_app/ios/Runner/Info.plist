@@ -26,6 +26,29 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!--
+		真机联调时，Flutter 通过局域网访问 Mac 上的 FastAPI 服务。
+		正式环境应改成 HTTPS 域名并删除这个例外；这里只允许当前开发机
+		局域网地址使用 HTTP，避免 ATS 拦截本地开发接口。
+	-->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- 允许开发机局域网 HTTP 联调；生产环境必须改为 HTTPS。 -->
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>192.168.0.111</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>用于连接开发环境中的直播服务。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
