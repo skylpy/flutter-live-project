@@ -16,6 +16,8 @@ final class FlutterLiveMediaPlayerViewFactory: NSObject, FlutterPlatformViewFact
     viewIdentifier viewId: Int64,
     arguments args: Any?
   ) -> FlutterPlatformView {
+    // Flutter 第一次构建 UiKitView 时会调用这里。工厂只负责创建 View，
+    // 播放控制仍由 FlutterLiveMediaPlugin 持有的 AVPlayer 完成。
     let view = FlutterLiveMediaPlayerView(frame: frame)
     onViewCreated(view)
     return view
@@ -40,11 +42,15 @@ final class FlutterLiveMediaPlayerView: UIView, FlutterPlatformView {
   }
 
   private var playerLayer: AVPlayerLayer {
+    // 因为 layerClass 返回 AVPlayerLayer，所以这里拿到的就是 View 的 backing
+    // layer，而不是额外创建的 CALayer。这样 Flutter PlatformView 的尺寸变化
+    // 会自然传递给视频层。
     layer as! AVPlayerLayer
   }
 
   override init(frame: CGRect) {
-    // 先显示黑色占位和文字；真正绑定 AVPlayer 后由 setPlayer 隐藏文字。
+    // View 创建时还没有播放器，先显示黑色背景和 AVPlayer 占位文字。
+    // play() 成功绑定 AVPlayer 后，setPlayer() 会隐藏这段文字。
     super.init(frame: frame)
     backgroundColor = .black
     clipsToBounds = true
@@ -66,6 +72,7 @@ final class FlutterLiveMediaPlayerView: UIView, FlutterPlatformView {
   }
 
   func view() -> UIView {
+    // FlutterPlatformView 要求返回实际嵌入 Flutter 页面树的 UIView。
     return self
   }
 
