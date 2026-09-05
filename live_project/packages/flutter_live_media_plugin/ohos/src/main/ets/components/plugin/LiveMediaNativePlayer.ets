@@ -71,7 +71,11 @@ export class LiveMediaNativePlayer {
     // stop() 会主动释放 AVPlayer；另外，某些系统版本在播放器进入
     // stopped/released 后不能再次给同一个对象设置 url。遇到这两种状态
     // 时重建播放器，保证“停止后再次播放”走一条干净的初始化链路。
-    if (this.playerState === 'stopped' || this.playerState === 'released') {
+    if (
+      this.playerState === 'stopped' ||
+      this.playerState === 'released' ||
+      this.playerState === 'error'
+    ) {
       return this.rebuildPlayer('再次播放');
     }
 

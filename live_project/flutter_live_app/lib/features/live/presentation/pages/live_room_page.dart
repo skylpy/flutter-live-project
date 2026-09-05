@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_live_core/flutter_live_core.dart';
-import 'package:flutter_live_media_plugin/flutter_live_media_plugin.dart';
 
 import '../../data/models/live_room.dart';
 import '../../data/datasources/live_chat_client.dart';
@@ -11,6 +10,7 @@ import '../../data/models/live_chat_message.dart';
 import '../../../../core/network/api_provider.dart';
 import '../../../../core/media/live_engine_provider.dart';
 import '../controllers/live_room_controller.dart';
+import '../widgets/live_room_player.dart';
 
 /// 全屏直播间页面。
 ///
@@ -89,7 +89,7 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
     return SafeArea(
       child: Stack(
         children: [
-          Positioned.fill(child: _PlayerPlaceholder(status: _engineStatus)),
+          Positioned.fill(child: LiveRoomPlayer(status: _engineStatus)),
           Positioned(
             top: 12,
             left: 16,
@@ -105,62 +105,6 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _PlayerPlaceholder extends StatelessWidget {
-  const _PlayerPlaceholder({this.status});
-
-  final String? status;
-
-  @override
-  Widget build(BuildContext context) {
-    // PlatformView 是真正的原生视频容器；其上的文字只是当前没有真实流时的说明层。
-    return Stack(
-      children: [
-        const Positioned(
-          left: 24,
-          right: 24,
-          top: 128,
-          bottom: 176,
-          child: ClipRRect(
-            borderRadius: BorderRadius.all(Radius.circular(16)),
-            child: FlutterLiveMediaPlayerView(),
-          ),
-        ),
-        Positioned.fill(
-          child: IgnorePointer(
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.live_tv,
-                    color: Colors.white.withValues(alpha: 0.55),
-                    size: 64,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '播放器区域',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.8),
-                      fontSize: 18,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    status ?? '媒体引擎抽象层已就绪',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.5),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
