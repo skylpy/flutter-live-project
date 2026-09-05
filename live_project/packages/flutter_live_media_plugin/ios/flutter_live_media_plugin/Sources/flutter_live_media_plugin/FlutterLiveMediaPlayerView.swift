@@ -30,14 +30,25 @@ final class FlutterLiveMediaPlayerViewFactory: NSObject, FlutterPlatformViewFact
 ///
 /// 这个 View 只负责渲染 AVPlayerLayer，不负责播放控制和重连；控制逻辑位于插件类。
 final class FlutterLiveMediaPlayerView: UIView, FlutterPlatformView {
-  private var playerLayer: AVPlayerLayer?
   private let label = UILabel(frame: .zero)
+
+  // 让 AVPlayerLayer 直接成为 UIView 的 backing layer。相比把播放器层作为
+  // 普通 sublayer 动态添加，这种方式能让 UIKit/Flutter PlatformView 在布局、
+  // 尺寸变化和模拟器渲染路径下始终使用同一个视频输出层。
+  override class var layerClass: AnyClass {
+    AVPlayerLayer.self
+  }
+
+  private var playerLayer: AVPlayerLayer {
+    layer as! AVPlayerLayer
+  }
 
   override init(frame: CGRect) {
     // 先显示黑色占位和文字；真正绑定 AVPlayer 后由 setPlayer 隐藏文字。
     super.init(frame: frame)
     backgroundColor = .black
     clipsToBounds = true
+    playerLayer.videoGravity = .resizeAspect
 
     label.text = "AVPlayer"
     label.textColor = UIColor.white.withAlphaComponent(0.65)
@@ -59,21 +70,13 @@ final class FlutterLiveMediaPlayerView: UIView, FlutterPlatformView {
   }
 
   func setPlayer(_ player: AVPlayer?) {
-    // 重新绑定播放器时先移除旧 layer，防止一个 View 叠加多个视频层。
-    playerLayer?.removeFromSuperlayer()
-    playerLayer = nil
+    // 直接替换 backing layer 的 AVPlayer，不叠加多个视频层，也不改变 Flutter
+    // PlatformView 的宿主视图；播放器重连时只会替换这里的 player 引用。
+    playerLayer.player = player
     label.isHidden = player != nil
-
-    guard let player else { return }
-    let layer = AVPlayerLayer(player: player)
-    layer.videoGravity = .resizeAspect
-    layer.frame = bounds
-    self.layer.addSublayer(layer)
-    playerLayer = layer
   }
 
   override func layoutSubviews() {
     super.layoutSubviews()
-    playerLayer?.frame = bounds
   }
 }

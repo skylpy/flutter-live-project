@@ -412,19 +412,29 @@ class LiveMediaFlutterApi: LiveMediaFlutterApiProtocol {
     return try await withCheckedThrowingContinuation { continuation in
       let channelName: String = "dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaFlutterApi.onEvent\(messageChannelSuffix)"
       let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
-      channel.sendMessage([eventArg] as [Any?]) { response in
-        guard let listResponse = response as? [Any?] else {
-          continuation.resume(throwing: createConnectionError(withChannelName: channelName))
-          return
+      // Flutter's iOS messenger requires native-to-Dart sends to originate on
+      // the platform thread. AVPlayer callbacks can arrive on another queue,
+      // so explicitly dispatch the generated Pigeon message to the main queue.
+      let sendMessage = {
+        channel.sendMessage([eventArg] as [Any?]) { response in
+          guard let listResponse = response as? [Any?] else {
+            continuation.resume(throwing: createConnectionError(withChannelName: channelName))
+            return
+          }
+          if listResponse.count > 1 {
+            let code: String = listResponse[0] as! String
+            let message: String? = nilOrValue(listResponse[1])
+            let details: String? = nilOrValue(listResponse[2])
+            continuation.resume(throwing: PigeonError(code: code, message: message, details: details))
+          } else {
+            continuation.resume()
+          }
         }
-        if listResponse.count > 1 {
-          let code: String = listResponse[0] as! String
-          let message: String? = nilOrValue(listResponse[1])
-          let details: String? = nilOrValue(listResponse[2])
-          continuation.resume(throwing: PigeonError(code: code, message: message, details: details))
-        } else {
-          continuation.resume()
-        }
+      }
+      if Thread.isMainThread {
+        sendMessage()
+      } else {
+        DispatchQueue.main.async(execute: sendMessage)
       }
     }
   }

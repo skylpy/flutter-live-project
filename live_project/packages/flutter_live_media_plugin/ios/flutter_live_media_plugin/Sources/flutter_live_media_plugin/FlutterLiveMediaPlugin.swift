@@ -188,8 +188,15 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
     // Pigeon FlutterApi 是异步回调；try? 表示 Flutter 页面销毁时不让回调异常
     // 反向影响原生播放器生命周期。
     let event = LiveMediaEvent(type: type, message: message, retryCount: retryCount)
-    Task {
-      try? await flutterApi.onEvent(event: event)
+    // Pigeon 的 FlutterApi 必须从 Flutter 平台线程发送。AVPlayer 的 KVO 和
+    // Notification 回调虽然通常在主线程，但 Swift Task 默认不保证继承这个
+    // 调度器；显式切回 MainActor，避免运行时出现“非平台线程发送消息”警告，
+    // 也避免 RECONNECTING/PLAYING 事件在高负载时丢失。
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      Task { @MainActor in
+        try? await self.flutterApi.onEvent(event: event)
+      }
     }
   }
 
