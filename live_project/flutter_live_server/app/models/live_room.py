@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Index, String, UniqueConstraint
+from sqlalchemy import BigInteger, DateTime, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -15,7 +15,6 @@ class LiveRoom(Base):
 
     __tablename__ = "live_rooms"
     __table_args__ = (
-        UniqueConstraint("title", "anchor_name", name="uq_live_rooms_title_anchor"),
         Index("ix_live_rooms_status_created_at", "status", "created_at"),
     )
 
@@ -27,6 +26,10 @@ class LiveRoom(Base):
     online_count: Mapped[int] = mapped_column(default=0, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="preparing", index=True)
     play_url: Mapped[str] = mapped_column(String(1000), nullable=False, default="")
+    # push_url 只返回给主播端；观众端只需要 play_url。
+    # 两个地址都由服务端生成，客户端不能自行拼接流名称，避免推流和观看房间错配。
+    push_url: Mapped[str] = mapped_column(String(1000), nullable=False, default="")
+    stream_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     category: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

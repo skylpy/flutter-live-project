@@ -1,6 +1,8 @@
 import AVFoundation
 import Flutter
+import HaishinKit
 import UIKit
+import VideoToolbox
 
 /// iOS 原生播放器插件。
 ///
@@ -18,6 +20,10 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
   // PlatformView 由 Flutter 创建和持有，因此插件只弱引用它，避免播放器插件
   // 反过来延长页面视图生命周期，造成直播间退出后仍然占用 UI 资源。
   private weak var playerView: FlutterLiveMediaPlayerView?
+
+  // 主播预览与观众播放器是两个独立 PlatformView。主播预览绑定 HaishinKit
+  // 的 HKView，观众播放器绑定 AVPlayerLayer，不能把两者混用。
+  private weak var publisherView: FlutterLiveMediaPublisherView?
 
   // 当前播放地址是“播放会话”的唯一标识。stop() 会清空它，让已经排队的
   // 重连任务失效；进入另一个直播间时会替换它。
@@ -41,6 +47,13 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
   // 清理时逐个移除，避免旧 AVPlayer 继续向页面发送事件。
   private var notificationTokens: [NSObjectProtocol] = []
 
+  // 主播端 RTMP 对象与观众端 AVPlayer 完全分离。这样同一个插件实例可以在
+  // 开播页管理采集推流，也可以在直播间管理 HLS 播放，互不调用 stop()。
+  private var rtmpConnection: RTMPConnection?
+  private var rtmpStream: RTMPStream?
+  private var pushStreamName: String?
+  private var pushConnectionURL: String?
+
   init(messenger: FlutterBinaryMessenger) {
     // messenger 是 FlutterEngine 的平台消息通道。Pigeon 会在这条通道上
     // 注册 HostApi，同时使用同一个通道把事件发回 Dart。
@@ -52,6 +65,7 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
     // 插件对象销毁时做最后一次资源清理，防止 KVO 和延迟重连持有闭包引用。
     clearPlayerObservers()
     retryWorkItem?.cancel()
+    stopPushResources()
   }
 
   public static func register(with registrar: FlutterPluginRegistrar) {
@@ -68,6 +82,12 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
         instance?.attach(view: view)
       },
       withId: "flutter_live_media_player_view"
+    )
+    registrar.register(
+      FlutterLiveMediaPublisherViewFactory { [weak instance] view in
+        instance?.attach(publisherView: view)
+      },
+      withId: "flutter_live_media_publisher_view"
     )
   }
 
@@ -118,6 +138,41 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
       playerView?.setPlayer(nil)
     }
     emit(type: .stopped, message: "播放器已停止")
+    return true
+  }
+
+  func startPreview() async throws -> Bool {
+    // 权限由 Flutter 页面先申请，这里只负责把 AVCaptureDevice 交给 HaishinKit。
+    // 真正的推流要等 startPush() 连接 RTMP 成功后才 publish。
+    return await MainActor.run {
+      guard preparePushResources() else { return false }
+      emit(type: .previewStarted, message: "iOS 摄像头预览已准备")
+      return true
+    }
+  }
+
+  func startPush(url: String) async throws -> Bool {
+    guard let pushURL = parsePushURL(url) else {
+      emit(type: .error, message: "推流地址必须是有效的 RTMP/RTMPS 地址")
+      return false
+    }
+    return await MainActor.run {
+      guard preparePushResources() else { return false }
+      guard let connection = rtmpConnection else { return false }
+      pushConnectionURL = pushURL.connectionURL
+      pushStreamName = pushURL.streamName
+      installPushObservers(on: connection)
+      emit(type: .pushConnecting, message: "正在连接 RTMP 推流服务器")
+      connection.connect(pushURL.connectionURL)
+      return true
+    }
+  }
+
+  func stopPush() async throws -> Bool {
+    await MainActor.run {
+      stopPushResources()
+    }
+    emit(type: .pushStopped, message: "iOS 推流已停止")
     return true
   }
 
@@ -249,6 +304,128 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
     // 绑定给新 View，保证页面旋转/重建后仍能显示当前播放内容。
     playerView = view
     view.setPlayer(player)
+  }
+
+  private func attach(publisherView view: FlutterLiveMediaPublisherView) {
+    // PlatformView 可能先于 startPreview 创建，因此这里先绑定当前 stream；
+    // 如果 stream 尚未创建，preparePushResources() 完成后会再次绑定。
+    publisherView = view
+    view.setStream(rtmpStream)
+  }
+
+  private func preparePushResources() -> Bool {
+    if rtmpStream != nil { return true }
+
+    let connection = RTMPConnection()
+    let stream = RTMPStream(connection: connection)
+    let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
+    let microphone = AVCaptureDevice.default(for: .audio)
+    guard camera != nil, microphone != nil else {
+      emit(type: .error, message: "没有可用的摄像头或麦克风")
+      return false
+    }
+
+    // 与 Android RootEncoder 保持一致：竖屏 720×1280、30fps、64kbps 音频，
+    // 关键帧间隔 2 秒。统一编码参数后，SRS 生成 HLS 时两端的延迟和切片行为
+    // 更容易对齐，也方便后续做跨平台弱网对比。
+    stream.frameRate = 30
+    stream.audioSettings = AudioCodecSettings(bitRate: 64 * 1000)
+    stream.videoSettings = VideoCodecSettings(
+      videoSize: .init(width: 720, height: 1280),
+      profileLevel: kVTProfileLevel_H264_Baseline_3_1 as String,
+      bitRate: 1_200 * 1000,
+      maxKeyFrameIntervalDuration: 2,
+      scalingMode: .trim,
+      bitRateMode: .average,
+      allowFrameReordering: nil,
+      isHardwareEncoderEnabled: true
+    )
+
+    var attachError: Error?
+    stream.attachCamera(camera) { error in
+      attachError = error
+    }
+    stream.attachAudio(
+      microphone,
+      automaticallyConfiguresApplicationAudioSession: false
+    ) { error in
+      attachError = error
+    }
+    if let attachError {
+      emit(type: .error, message: "iOS 采集设备初始化失败：\(attachError.localizedDescription)")
+      stream.attachAudio(nil)
+      stream.attachCamera(nil)
+      return false
+    }
+
+    rtmpConnection = connection
+    rtmpStream = stream
+    publisherView?.setStream(stream)
+    return true
+  }
+
+  private func installPushObservers(on connection: RTMPConnection) {
+    // HaishinKit 使用 RTMP 状态事件表示连接成功/失败；成功后才 publish，避免
+    // FastAPI 过早把一个还没有媒体数据的房间暴露给观众。
+    connection.addEventListener(
+      .rtmpStatus,
+      selector: #selector(rtmpStatusHandler(_:)),
+      observer: self
+    )
+    connection.addEventListener(
+      .ioError,
+      selector: #selector(rtmpErrorHandler(_:)),
+      observer: self
+    )
+  }
+
+  @objc private func rtmpStatusHandler(_ notification: Notification) {
+    let event = Event.from(notification)
+    guard let data = event.data as? ASObject,
+          let code = data["code"] as? String
+    else { return }
+
+    switch code {
+    case RTMPConnection.Code.connectSuccess.rawValue:
+      guard let stream = rtmpStream, let streamName = pushStreamName else { return }
+      stream.publish(streamName)
+      emit(type: .pushStarted, message: "RTMP 推流已连接")
+    case RTMPConnection.Code.connectFailed.rawValue,
+         RTMPConnection.Code.connectClosed.rawValue:
+      emit(type: .error, message: "RTMP 推流连接失败：\(code)")
+    default:
+      break
+    }
+  }
+
+  @objc private func rtmpErrorHandler(_ notification: Notification) {
+    emit(type: .error, message: "iOS RTMP 网络错误")
+  }
+
+  private func stopPushResources() {
+    guard let stream = rtmpStream else { return }
+    stream.close()
+    stream.attachAudio(nil)
+    stream.attachCamera(nil)
+    publisherView?.setStream(nil)
+    rtmpConnection?.close()
+    rtmpStream = nil
+    rtmpConnection = nil
+    pushStreamName = nil
+    pushConnectionURL = nil
+  }
+
+  private func parsePushURL(_ value: String) -> (connectionURL: String, streamName: String)? {
+    guard let url = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines)),
+          let scheme = url.scheme?.lowercased(),
+          scheme == "rtmp" || scheme == "rtmps"
+    else { return nil }
+
+    let components = url.path.split(separator: "/", omittingEmptySubsequences: true)
+    guard let streamName = components.last, components.count >= 2 else { return nil }
+    var baseURL = url
+    baseURL.deleteLastPathComponent()
+    return (baseURL.absoluteString, String(streamName))
   }
 
   private func emit(

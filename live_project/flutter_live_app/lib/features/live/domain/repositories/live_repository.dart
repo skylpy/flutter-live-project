@@ -7,4 +7,14 @@ abstract interface class LiveRepository {
   Future<List<LiveRoom>> getLiveRooms();
 
   Future<LiveRoom> getLiveRoomDetail(String roomId);
+
+  Future<LiveRoom> createLiveRoom({
+    required String title,
+    required String anchorName,
+    required String category,
+  });
+
+  Future<LiveRoom> startLiveRoom(String roomId);
+
+  Future<LiveRoom> stopLiveRoom(String roomId);
 }

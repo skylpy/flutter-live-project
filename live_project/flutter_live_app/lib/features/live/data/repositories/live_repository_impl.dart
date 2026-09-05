@@ -16,4 +16,23 @@ class LiveRepositoryImpl implements LiveRepository {
   @override
   Future<LiveRoom> getLiveRoomDetail(String roomId) =>
       _dataSource.getLiveRoomDetail(roomId);
+
+  @override
+  Future<LiveRoom> createLiveRoom({
+    required String title,
+    required String anchorName,
+    required String category,
+  }) => _dataSource.createLiveRoom(
+    title: title,
+    anchorName: anchorName,
+    category: category,
+  );
+
+  @override
+  Future<LiveRoom> startLiveRoom(String roomId) =>
+      _dataSource.startLiveRoom(roomId);
+
+  @override
+  Future<LiveRoom> stopLiveRoom(String roomId) =>
+      _dataSource.stopLiveRoom(roomId);
 }

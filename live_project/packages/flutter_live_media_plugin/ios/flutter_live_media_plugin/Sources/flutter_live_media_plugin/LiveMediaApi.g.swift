@@ -195,7 +195,11 @@ enum LiveMediaEventType: Int, CaseIterable {
   case completed = 3
   case reconnecting = 4
   case stopped = 5
-  case error = 6
+  case previewStarted = 6
+  case pushConnecting = 7
+  case pushStarted = 8
+  case pushStopped = 9
+  case error = 10
 }
 
 /// Generated class from Pigeon that represents data sent in messages.
@@ -334,6 +338,9 @@ protocol LiveMediaHostApi {
   func initialize(configuration: LiveEngineConfiguration) async throws -> Bool
   func play(url: String) async throws -> Bool
   func stop() async throws -> Bool
+  func startPreview() async throws -> Bool
+  func startPush(url: String) async throws -> Bool
+  func stopPush() async throws -> Bool
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -391,6 +398,53 @@ class LiveMediaHostApiSetup {
     } else {
       stopChannel.setMessageHandler(nil)
     }
+    let startPreviewChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.startPreview\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      startPreviewChannel.setMessageHandler { _, reply in
+        Task { @MainActor in
+          do {
+            let result = try await api.startPreview()
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      startPreviewChannel.setMessageHandler(nil)
+    }
+    let startPushChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.startPush\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      startPushChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let urlArg = args[0] as! String
+        Task { @MainActor in
+          do {
+            let result = try await api.startPush(url: urlArg)
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      startPushChannel.setMessageHandler(nil)
+    }
+    let stopPushChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.stopPush\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      stopPushChannel.setMessageHandler { _, reply in
+        Task { @MainActor in
+          do {
+            let result = try await api.stopPush()
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      stopPushChannel.setMessageHandler(nil)
+    }
   }
 }
 
@@ -412,29 +466,19 @@ class LiveMediaFlutterApi: LiveMediaFlutterApiProtocol {
     return try await withCheckedThrowingContinuation { continuation in
       let channelName: String = "dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaFlutterApi.onEvent\(messageChannelSuffix)"
       let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
-      // Flutter's iOS messenger requires native-to-Dart sends to originate on
-      // the platform thread. AVPlayer callbacks can arrive on another queue,
-      // so explicitly dispatch the generated Pigeon message to the main queue.
-      let sendMessage = {
-        channel.sendMessage([eventArg] as [Any?]) { response in
-          guard let listResponse = response as? [Any?] else {
-            continuation.resume(throwing: createConnectionError(withChannelName: channelName))
-            return
-          }
-          if listResponse.count > 1 {
-            let code: String = listResponse[0] as! String
-            let message: String? = nilOrValue(listResponse[1])
-            let details: String? = nilOrValue(listResponse[2])
-            continuation.resume(throwing: PigeonError(code: code, message: message, details: details))
-          } else {
-            continuation.resume()
-          }
+      channel.sendMessage([eventArg] as [Any?]) { response in
+        guard let listResponse = response as? [Any?] else {
+          continuation.resume(throwing: createConnectionError(withChannelName: channelName))
+          return
         }
-      }
-      if Thread.isMainThread {
-        sendMessage()
-      } else {
-        DispatchQueue.main.async(execute: sendMessage)
+        if listResponse.count > 1 {
+          let code: String = listResponse[0] as! String
+          let message: String? = nilOrValue(listResponse[1])
+          let details: String? = nilOrValue(listResponse[2])
+          continuation.resume(throwing: PigeonError(code: code, message: message, details: details))
+        } else {
+          continuation.resume()
+        }
       }
     }
   }

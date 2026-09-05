@@ -1,4 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 直播链路需要网络、摄像头和麦克风；运行时权限仍由 Flutter 页面申请。 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- 直播链路需要网络、摄像头和麦克风；运行时权限仍由 Flutter 页面申请。 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <application
         android:label="flutter_live_app"
         android:name="${applicationName}"

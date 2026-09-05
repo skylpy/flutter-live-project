@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/create_live/presentation/pages/create_live_page.dart';
+import '../../features/create_live/presentation/pages/live_broadcast_page.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/home/presentation/pages/home_page.dart';
 import '../../features/live/presentation/pages/live_page.dart';
 import '../../features/live/presentation/pages/live_room_page.dart';
+import '../../features/live/data/models/live_room.dart';
 import '../../features/message/presentation/pages/message_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
 import '../../shared/widgets/main_scaffold.dart';
@@ -90,6 +92,22 @@ final appRouter = GoRouter(
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) =>
           LiveRoomPage(roomId: state.pathParameters['roomId']!),
+    ),
+    GoRoute(
+      path: '/live-broadcast/:roomId',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) {
+        // 主播页由开播表单通过 extra 传入刚创建的房间快照，里面包含服务端
+        // 生成的 pushUrl。若用户直接输入深链接而没有 extra，给出明确提示，
+        // 避免把一个没有推流地址的房间交给原生引擎。
+        final room = state.extra;
+        if (room is! LiveRoom) {
+          return const Scaffold(
+            body: Center(child: Text('主播房间信息不存在，请返回后重新开播')),
+          );
+        }
+        return LiveBroadcastPage(room: room);
+      },
     ),
     GoRoute(
       path: '/login',

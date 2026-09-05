@@ -49,6 +49,10 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>用于连接开发环境中的直播服务。</string>
+	<key>NSCameraUsageDescription</key>
+	<string>用于直播时采集主播视频画面。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>用于直播时采集主播声音。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

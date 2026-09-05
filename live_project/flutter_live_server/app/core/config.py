@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
+    # 媒体服务器地址必须是两台手机都能访问的 Mac 局域网地址，不能写 127.0.0.1。
+    # 生产环境通过 MEDIA_SERVER_HOST 等环境变量覆盖。
+    media_server_host: str = "192.168.0.111"
+    media_rtmp_port: int = 1935
+    media_http_port: int = 8080
+    media_app: str = "live"
+
     mysql_host: str = "127.0.0.1"
     mysql_port: int = 3306
     mysql_user: str = "root"

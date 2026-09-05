@@ -28,6 +28,10 @@ enum LiveMediaEventType {
   completed,
   reconnecting,
   stopped,
+  previewStarted,
+  pushConnecting,
+  pushStarted,
+  pushStopped,
   error,
 }
 
@@ -50,10 +54,20 @@ abstract class LiveMediaHostApi {
 
   @async
   bool stop();
+
+  // Flutter → 原生：主播端摄像头预览和 RTMP 推流请求。
+  @async
+  bool startPreview();
+
+  @async
+  bool startPush(String url);
+
+  @async
+  bool stopPush();
 }
 
 @FlutterApi()
 abstract class LiveMediaFlutterApi {
-  // 原生 → Flutter：播放器状态回调。
+  // 原生 → Flutter：播放和推流状态回调。
   void onEvent(LiveMediaEvent event);
 }

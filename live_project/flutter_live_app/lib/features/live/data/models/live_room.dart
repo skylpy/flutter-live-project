@@ -12,6 +12,8 @@ class LiveRoom {
     required this.coverUrl,
     required this.status,
     required this.playUrl,
+    required this.pushUrl,
+    required this.streamName,
     required this.category,
     this.createdAt,
     this.updatedAt,
@@ -25,6 +27,8 @@ class LiveRoom {
   final String coverUrl;
   final String status;
   final String playUrl;
+  final String pushUrl;
+  final String streamName;
   final String category;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -40,6 +44,8 @@ class LiveRoom {
       coverUrl: _string(json['coverUrl'] ?? json['cover_url']),
       status: _string(json['status'], fallback: 'living'),
       playUrl: _string(json['playUrl'] ?? json['play_url']),
+      pushUrl: _string(json['pushUrl'] ?? json['push_url']),
+      streamName: _string(json['streamName'] ?? json['stream_name']),
       category: _string(json['category']),
       createdAt: _date(json['createdAt'] ?? json['created_at']),
       updatedAt: _date(json['updatedAt'] ?? json['updated_at']),
@@ -57,6 +63,8 @@ class LiveRoom {
       'coverUrl': coverUrl,
       'status': status,
       'playUrl': playUrl,
+      'pushUrl': pushUrl,
+      'streamName': streamName,
       'category': category,
       'createdAt': createdAt?.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),

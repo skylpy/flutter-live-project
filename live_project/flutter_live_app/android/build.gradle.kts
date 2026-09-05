@@ -2,6 +2,8 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // Android 推流端的 RootEncoder 发布在 JitPack。
+        maven { url = uri("https://jitpack.io") }
     }
 }
 

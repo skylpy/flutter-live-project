@@ -28,6 +28,43 @@ final class FlutterLiveMediaPlayerView extends StatelessWidget {
   }
 }
 
+/// 主播端摄像头预览视图。
+///
+/// Android 使用原生 SurfaceView 接收 Camera2 的画面；iOS 使用 HaishinKit 的
+/// HKView 接收 AVCaptureVideoPreviewLayer。两个平台都把“采集预览”和“推流控制”
+/// 放在插件内，Flutter 开播页只依赖统一的 LiveEngine 接口。
+final class FlutterLiveMediaPublisherView extends StatelessWidget {
+  const FlutterLiveMediaPublisherView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      // 主播预览只负责显示摄像头画面，不需要接收触摸事件。
+      // Android 的 SurfaceView 在部分真机上会把自身的原生布局区域报告得比
+      // Flutter 约束更大；如果让它参与命中测试，可能挡住下面的标题输入框和
+      // “开始直播”按钮。忽略它的触摸命中后，画面仍然渲染，但输入事件继续
+      // 交给 Flutter 表单处理。
+      return const IgnorePointer(
+        child: AndroidView(viewType: 'flutter_live_media_publisher_view'),
+      );
+    }
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      // iOS 使用 HaishinKit 的 HKView 显示同一个 RTMPStream 的采集画面。
+      // 预览和推流共享采集会话，避免为了预览再创建第二个 AVCaptureSession。
+      return const UiKitView(viewType: 'flutter_live_media_publisher_view');
+    }
+    return const ColoredBox(
+      color: Color(0xFF111111),
+      child: Center(
+        child: Text(
+          '摄像头预览将在原生推流模块中显示',
+          style: TextStyle(color: Color(0xFFBDBDBD)),
+        ),
+      ),
+    );
+  }
+}
+
 /// Flutter 侧的跨平台媒体引擎适配器。
 ///
 /// 原生侧拥有真正的播放器对象：Apple 使用 AVPlayer，Android 使用 ExoPlayer。
@@ -75,6 +112,10 @@ final class FlutterLiveMediaEngine implements LiveEngine {
       LiveMediaEventType.completed => LiveEngineEventType.completed,
       LiveMediaEventType.reconnecting => LiveEngineEventType.reconnecting,
       LiveMediaEventType.stopped => LiveEngineEventType.stopped,
+      LiveMediaEventType.previewStarted => LiveEngineEventType.previewStarted,
+      LiveMediaEventType.pushConnecting => LiveEngineEventType.pushConnecting,
+      LiveMediaEventType.pushStarted => LiveEngineEventType.pushStarted,
+      LiveMediaEventType.pushStopped => LiveEngineEventType.pushStopped,
       LiveMediaEventType.error => LiveEngineEventType.error,
     };
     final message = event.message ?? '原生播放器状态已更新';
@@ -114,19 +155,38 @@ final class FlutterLiveMediaEngine implements LiveEngine {
   @override
   Future<void> startPreview() async {
     _ensureUsable();
-    _emit(LiveEngineEventType.previewRequested, '预览能力待接入');
+    final accepted = await _api.startPreview();
+    if (!accepted) {
+      _emit(LiveEngineEventType.error, '原生摄像头预览启动失败');
+      return;
+    }
+    _emit(LiveEngineEventType.previewRequested, '已发送摄像头预览请求');
   }
 
   @override
   Future<void> startPush(String url) async {
     _ensureUsable();
-    _emit(LiveEngineEventType.pushRequested, '推流能力待接入');
+    if (url.trim().isEmpty) {
+      _emit(LiveEngineEventType.error, '推流地址为空');
+      return;
+    }
+    final accepted = await _api.startPush(url);
+    if (!accepted) {
+      _emit(LiveEngineEventType.error, '原生推流启动失败');
+      return;
+    }
+    _emit(LiveEngineEventType.pushRequested, '已发送原生推流请求');
   }
 
   @override
   Future<void> stopPush() async {
     _ensureUsable();
-    _emit(LiveEngineEventType.pushStopped, '停止推流能力待接入');
+    final stopped = await _api.stopPush();
+    if (!stopped) {
+      _emit(LiveEngineEventType.error, '停止原生推流失败');
+      return;
+    }
+    _emit(LiveEngineEventType.pushStopped, '已发送停止推流请求');
   }
 
   @override

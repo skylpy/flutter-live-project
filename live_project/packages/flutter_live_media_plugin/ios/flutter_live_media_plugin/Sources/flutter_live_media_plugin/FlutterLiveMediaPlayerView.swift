@@ -1,5 +1,6 @@
 import AVFoundation
 import Flutter
+import HaishinKit
 import UIKit
 
 /// 创建并把原生播放器视图交给插件实例管理。
@@ -85,5 +86,64 @@ final class FlutterLiveMediaPlayerView: UIView, FlutterPlatformView {
 
   override func layoutSubviews() {
     super.layoutSubviews()
+  }
+}
+
+/// 创建 iOS 主播摄像头预览 PlatformView。
+final class FlutterLiveMediaPublisherViewFactory: NSObject, FlutterPlatformViewFactory {
+  private let onViewCreated: (FlutterLiveMediaPublisherView) -> Void
+
+  init(onViewCreated: @escaping (FlutterLiveMediaPublisherView) -> Void) {
+    self.onViewCreated = onViewCreated
+    super.init()
+  }
+
+  func create(
+    withFrame frame: CGRect,
+    viewIdentifier viewId: Int64,
+    arguments args: Any?
+  ) -> FlutterPlatformView {
+    let view = FlutterLiveMediaPublisherView(frame: frame)
+    onViewCreated(view)
+    return view
+  }
+
+  func createArgsCodec() -> FlutterMessageCodec & NSObjectProtocol {
+    FlutterStandardMessageCodec.sharedInstance()
+  }
+}
+
+/// iOS 主播摄像头预览 View。
+///
+/// HaishinKit 的 HKView 内部使用 AVCaptureVideoPreviewLayer，并且可以直接
+/// attach 同一个 RTMPStream 的 mixer session。这样画面和推流使用同一套采集数据，
+/// 不会因为单独创建预览 session 而重复占用摄像头或造成画面不同步。
+final class FlutterLiveMediaPublisherView: NSObject, FlutterPlatformView {
+  // HKView 不是 open class，插件不能通过继承扩展它；使用容器组合 HKView，
+  // 同时保留 FlutterPlatformView 所需的稳定 UIView 生命周期。
+  private let containerView: UIView
+  private let previewView: HKView
+
+  init(frame: CGRect) {
+    containerView = UIView(frame: frame)
+    previewView = HKView(frame: frame)
+    super.init()
+
+    containerView.backgroundColor = .black
+    previewView.videoGravity = .resizeAspectFill
+    previewView.videoOrientation = .portrait
+    previewView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    previewView.frame = containerView.bounds
+    containerView.addSubview(previewView)
+  }
+
+  func view() -> UIView {
+    containerView
+  }
+
+  func setStream(_ stream: RTMPStream?) {
+    // detach 时 HKView 会停止 AVCaptureSession；结束直播后可安全释放摄像头。
+    previewView.attachStream(stream)
+    previewView.videoOrientation = .portrait
   }
 }

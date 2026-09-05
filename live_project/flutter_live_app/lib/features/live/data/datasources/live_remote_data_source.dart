@@ -37,4 +37,44 @@ class LiveRemoteDataSource {
     );
     return response.data;
   }
+
+  Future<LiveRoom> createLiveRoom({
+    required String title,
+    required String anchorName,
+    required String category,
+  }) async {
+    final response = await _apiClient.post<LiveRoom>(
+      '/live/rooms',
+      data: <String, Object?>{
+        'title': title,
+        'anchorName': anchorName,
+        'category': category,
+      },
+      parseData: _parseRoom,
+    );
+    return response.data;
+  }
+
+  Future<LiveRoom> startLiveRoom(String roomId) async {
+    final response = await _apiClient.post<LiveRoom>(
+      '/live/rooms/$roomId/start',
+      parseData: _parseRoom,
+    );
+    return response.data;
+  }
+
+  Future<LiveRoom> stopLiveRoom(String roomId) async {
+    final response = await _apiClient.post<LiveRoom>(
+      '/live/rooms/$roomId/stop',
+      parseData: _parseRoom,
+    );
+    return response.data;
+  }
+
+  LiveRoom _parseRoom(Object? value) {
+    if (value is! Map) {
+      throw const FormatException('直播间数据格式不正确');
+    }
+    return LiveRoom.fromJson(Map<String, Object?>.from(value));
+  }
 }

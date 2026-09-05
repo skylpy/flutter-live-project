@@ -10,7 +10,10 @@ enum LiveEngineEventType {
   reconnecting,
   stopped,
   previewRequested,
+  previewStarted,
   pushRequested,
+  pushConnecting,
+  pushStarted,
   pushStopped,
   error,
 }

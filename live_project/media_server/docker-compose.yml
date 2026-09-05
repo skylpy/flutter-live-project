@@ -1,0 +1,18 @@
+services:
+  # SRS 接收手机 A 的 RTMP 推流，并对外提供 HLS；后续可开启 WebRTC。
+  # 端口映射使用宿主机端口，因此手机 URL 中填写 Mac 的局域网 IP。
+  srs:
+    image: ossrs/srs:6
+    container_name: flutter-live-srs
+    restart: unless-stopped
+    ports:
+      - "1935:1935" # RTMP 推流
+      - "1985:1985" # SRS HTTP API
+      - "8080:8080" # HLS 播放
+      - "8000:8000/udp" # WebRTC UDP
+      - "10080:10080/udp" # WebRTC ICE/TCP fallback
+    environment:
+      SRS_CANDIDATE: ${SRS_CANDIDATE:-192.168.0.111}
+    volumes:
+      - ./srs.conf:/usr/local/srs/conf/live.conf:ro
+    command: ["./objs/srs", "-c", "conf/live.conf"]

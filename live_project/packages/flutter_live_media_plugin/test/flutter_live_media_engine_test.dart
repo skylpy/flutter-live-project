@@ -7,6 +7,9 @@ class _FakeLiveMediaHostApi extends LiveMediaHostApi {
   int initializeCalls = 0;
   int playCalls = 0;
   int stopCalls = 0;
+  int startPreviewCalls = 0;
+  int startPushCalls = 0;
+  int stopPushCalls = 0;
 
   @override
   Future<bool> initialize(LiveEngineConfiguration configuration) async {
@@ -23,6 +26,24 @@ class _FakeLiveMediaHostApi extends LiveMediaHostApi {
   @override
   Future<bool> stop() async {
     stopCalls++;
+    return true;
+  }
+
+  @override
+  Future<bool> startPreview() async {
+    startPreviewCalls++;
+    return true;
+  }
+
+  @override
+  Future<bool> startPush(String url) async {
+    startPushCalls++;
+    return true;
+  }
+
+  @override
+  Future<bool> stopPush() async {
+    stopPushCalls++;
     return true;
   }
 }

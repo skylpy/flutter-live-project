@@ -22,6 +22,8 @@ class LiveMockRepository implements LiveRepository {
       coverUrl: '',
       status: 'living',
       playUrl: _demoPlayUrl,
+      pushUrl: '',
+      streamName: '',
       category: '科技',
     ),
     LiveRoom(
@@ -33,6 +35,8 @@ class LiveMockRepository implements LiveRepository {
       coverUrl: '',
       status: 'living',
       playUrl: _demoPlayUrl,
+      pushUrl: '',
+      streamName: '',
       category: '音乐',
     ),
     LiveRoom(
@@ -44,6 +48,8 @@ class LiveMockRepository implements LiveRepository {
       coverUrl: '',
       status: 'living',
       playUrl: _demoPlayUrl,
+      pushUrl: '',
+      streamName: '',
       category: '游戏',
     ),
     LiveRoom(
@@ -55,6 +61,8 @@ class LiveMockRepository implements LiveRepository {
       coverUrl: '',
       status: 'living',
       playUrl: _demoPlayUrl,
+      pushUrl: '',
+      streamName: '',
       category: '科技',
     ),
   ];
@@ -70,4 +78,19 @@ class LiveMockRepository implements LiveRepository {
     }
     throw StateError('Mock 直播间不存在：$roomId');
   }
+
+  @override
+  Future<LiveRoom> createLiveRoom({
+    required String title,
+    required String anchorName,
+    required String category,
+  }) => throw UnsupportedError('Mock 数据源不支持真实开播');
+
+  @override
+  Future<LiveRoom> startLiveRoom(String roomId) =>
+      throw UnsupportedError('Mock 数据源不支持真实开播');
+
+  @override
+  Future<LiveRoom> stopLiveRoom(String roomId) =>
+      throw UnsupportedError('Mock 数据源不支持真实开播');
 }

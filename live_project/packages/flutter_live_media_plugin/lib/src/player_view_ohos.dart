@@ -14,20 +14,17 @@ Widget buildLiveMediaPlayerView() {
   return const _OhosTextureView();
 }
 
-/// PlatformView 占位控件。
+/// PlatformView 兼容占位控件。
 ///
-/// 当前真实 HLS 画面走 Texture（官方视频播放方案），这里保留 OhosView
-/// 注册入口，用于未来需要原生同层渲染、手势或复杂视频控件时切换。
+/// 当前 Flutter SDK 没有稳定的 `OhosView` Dart API，因此统一复用 Texture
+/// 路径。未来鸿蒙插件提供稳定的 PlatformView 类型后，只需在这里替换实现，
+/// 不影响 LiveEngine 和业务页面。
 class FlutterLiveMediaPlatformViewPlaceholder extends StatelessWidget {
   const FlutterLiveMediaPlatformViewPlaceholder({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return OhosView(
-      viewType: 'flutter_live_media_player_view',
-      creationParams: const <String, Object?>{},
-      creationParamsCodec: const StandardMessageCodec(),
-    );
+    return const _OhosTextureView();
   }
 }
 

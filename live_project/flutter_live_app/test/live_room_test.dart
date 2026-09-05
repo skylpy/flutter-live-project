@@ -13,6 +13,8 @@ void main() {
       coverUrl: '',
       status: 'living',
       playUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+      pushUrl: 'rtmp://127.0.0.1:1935/live/test',
+      streamName: 'test',
       category: '技术',
     );
 

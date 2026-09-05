@@ -208,7 +208,11 @@ enum class LiveMediaEventType(val raw: Int) {
   COMPLETED(3),
   RECONNECTING(4),
   STOPPED(5),
-  ERROR(6);
+  PREVIEW_STARTED(6),
+  PUSH_CONNECTING(7),
+  PUSH_STARTED(8),
+  PUSH_STOPPED(9),
+  ERROR(10);
 
   companion object {
     fun ofRaw(raw: Int): LiveMediaEventType? {
@@ -344,6 +348,9 @@ interface LiveMediaHostApi {
   suspend fun initialize(configuration: LiveEngineConfiguration): Boolean
   suspend fun play(url: String): Boolean
   suspend fun stop(): Boolean
+  suspend fun startPreview(): Boolean
+  suspend fun startPush(url: String): Boolean
+  suspend fun stopPush(): Boolean
 
   companion object {
     /** The codec used by LiveMediaHostApi. */
@@ -399,6 +406,59 @@ interface LiveMediaHostApi {
             CoroutineScope(Dispatchers.Main).launch {
               val wrapped: List<Any?> = try {
                 listOf(api.stop())
+              } catch (exception: Throwable) {
+                LiveMediaApiPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.startPreview$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.startPreview())
+              } catch (exception: Throwable) {
+                LiveMediaApiPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.startPush$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val urlArg = args[0] as String
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.startPush(urlArg))
+              } catch (exception: Throwable) {
+                LiveMediaApiPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.stopPush$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.stopPush())
               } catch (exception: Throwable) {
                 LiveMediaApiPigeonUtils.wrapError(exception)
               }

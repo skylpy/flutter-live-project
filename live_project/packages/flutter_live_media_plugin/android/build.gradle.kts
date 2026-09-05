@@ -8,6 +8,8 @@ buildscript {
     repositories {
         google()
         mavenCentral()
+        // RootEncoder 发布在 JitPack；只用于 Android 原生推流实现。
+        maven { url = uri("https://jitpack.io") }
     }
 
     dependencies {
@@ -20,6 +22,7 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        maven { url = uri("https://jitpack.io") }
     }
 }
 
@@ -82,6 +85,9 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.6.1")
     // Pigeon 生成的 Kotlin HostApi 使用 suspend 函数，需要 Android 协程运行时。
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    // RootEncoder 负责 Camera2/Microphone 采集、MediaCodec 编码和 RTMP 推送。
+    // Flutter 层只拿到 LiveEngine 事件，不直接依赖这套 Android SDK。
+    implementation("com.github.pedroSG94.RootEncoder:library:2.8.1")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("org.mockito:mockito-core:5.0.0")
 }

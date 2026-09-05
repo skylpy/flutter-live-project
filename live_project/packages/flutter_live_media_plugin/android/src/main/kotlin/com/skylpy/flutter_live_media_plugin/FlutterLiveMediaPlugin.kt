@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.View
+import android.view.SurfaceView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -16,6 +17,8 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.pedro.common.ConnectChecker
+import com.pedro.library.rtmp.RtmpStream
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.StandardMessageCodec
@@ -28,6 +31,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 private const val PLAYER_VIEW_TYPE = "flutter_live_media_player_view"
+private const val PUBLISHER_VIEW_TYPE = "flutter_live_media_publisher_view"
 private const val LOG_TAG = "FlutterLiveMedia"
 private const val MAX_RECONNECT_ATTEMPTS = 3
 private const val FIRST_RECONNECT_DELAY_MILLIS = 1_000L
@@ -55,6 +59,12 @@ class FlutterLiveMediaPlugin : FlutterPlugin {
             PLAYER_VIEW_TYPE,
             AndroidLiveMediaPlayerViewFactory(engine.player),
         )
+        // 主播端使用独立 SurfaceView。它与观众端 PlayerView 分开，避免在同一个
+        // PlatformView 中混合 ExoPlayer 渲染和 Camera2 采集。
+        binding.platformViewRegistry.registerViewFactory(
+            PUBLISHER_VIEW_TYPE,
+            AndroidLiveMediaPublisherViewFactory(engine),
+        )
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -69,13 +79,15 @@ private class AndroidLiveMediaEngine(
     context: Context,
     messenger: BinaryMessenger,
 ) : LiveMediaHostApi {
+    private val applicationContext = context.applicationContext
+
     // ExoPlayer 负责真正的媒体解析和播放；Flutter 只通过接口调用它。
-    val player: ExoPlayer = ExoPlayer.Builder(context.applicationContext).build()
+    val player: ExoPlayer = ExoPlayer.Builder(applicationContext).build()
 
     // HLS 的分片请求由 DefaultDataSource 统一发出。把 DataSourceFactory 保存下来，
     // 重连时可以用完全相同的网络配置重新创建 HlsMediaSource，而不是复制一套请求代码。
     private val hlsMediaSourceFactory = HlsMediaSource.Factory(
-        DefaultDataSource.Factory(context.applicationContext),
+        DefaultDataSource.Factory(applicationContext),
     )
 
     private val eventApi = LiveMediaFlutterApi(messenger)
@@ -84,6 +96,11 @@ private class AndroidLiveMediaEngine(
     private var currentUrl: String? = null
     private var reconnectAttempt = 0
     private var reconnectRunnable: Runnable? = null
+
+    // RootEncoder 只负责主播端推流；不要复用 ExoPlayer 的 currentUrl 或 stop()。
+    private var pushStream: RtmpStream? = null
+    private var publisherSurface: SurfaceView? = null
+    private var previewRequested = false
 
     init {
         // Player.Listener 是 ExoPlayer 的状态出口。这里只转换状态并发送统一事件，
@@ -163,6 +180,54 @@ private class AndroidLiveMediaEngine(
         return true
     }
 
+    override suspend fun startPreview(): Boolean {
+        // 摄像头采集需要先经过 Android 运行时权限检查。权限由 Flutter 页面申请，
+        // 这里只负责创建编码器并把画面输出到主播 PlatformView。
+        val stream = ensurePushStream() ?: return false
+        previewRequested = true
+        if (!stream.isOnPreview) {
+            publisherSurface?.let { stream.startPreview(it) }
+        }
+        emit(LiveMediaEventType.PREVIEW_STARTED, "Android 摄像头预览已启动")
+        return true
+    }
+
+    override suspend fun startPush(url: String): Boolean {
+        val normalizedUrl = url.trim()
+        val scheme = Uri.parse(normalizedUrl).scheme?.lowercase()
+        if (normalizedUrl.isEmpty() || scheme !in setOf("rtmp", "rtmps")) {
+            emit(LiveMediaEventType.ERROR, "当前仅支持 RTMP/RTMPS 推流地址")
+            return false
+        }
+
+        val stream = ensurePushStream() ?: return false
+        if (!stream.isOnPreview) {
+            publisherSurface?.let { stream.startPreview(it) }
+        }
+        previewRequested = true
+        emit(LiveMediaEventType.PUSH_CONNECTING, "正在连接 RTMP 推流服务器")
+        return runCatching {
+            stream.startStream(normalizedUrl)
+            true
+        }.getOrElse { error ->
+            Log.e(LOG_TAG, "RTMP push start failed", error)
+            emit(LiveMediaEventType.ERROR, error.message ?: "RTMP 推流启动失败")
+            false
+        }
+    }
+
+    override suspend fun stopPush(): Boolean {
+        // 先停网络推流，再停预览；否则摄像头仍会被编码器占用，下一次开播可能
+        // 拿不到 Camera2 资源。这里不影响观众端 ExoPlayer。
+        pushStream?.let { stream ->
+            runCatching { stream.stopStream() }
+            runCatching { stream.stopPreview() }
+        }
+        previewRequested = false
+        emit(LiveMediaEventType.PUSH_STOPPED, "Android 推流已停止")
+        return true
+    }
+
     private fun scheduleReconnect() {
         val url = currentUrl ?: return
         // 同一次播放错误可能触发多个底层回调，已有任务时不能重复排队，
@@ -212,6 +277,35 @@ private class AndroidLiveMediaEngine(
         return hlsMediaSourceFactory.createMediaSource(mediaItem)
     }
 
+    private fun ensurePushStream(): RtmpStream? {
+        pushStream?.let { return it }
+        return runCatching {
+            RtmpStream(context = applicationContext, connectChecker = PushConnectChecker())
+                .also { stream ->
+                    // 720p/30fps/1.2Mbps 是 MVP 的保守默认值，后续再根据设备能力和
+                    // 弱网策略动态调整；prepare* 返回 false 时不能启动推流。
+                    // SRS 的 HLS 切片会在关键帧处切开。这里使用六参数重载，显式
+                    // 设置 2 秒关键帧间隔，让不同 Android 编码器都遵守直播切片
+                    // 所需的 GOP 粒度，避免观众端等待很长时间才出现第一帧。
+                    val videoReady = stream.prepareVideo(720, 1280, 1_200_000, 30, 0, 2)
+                    // RootEncoder 的参数顺序是 sampleRate、stereo、bitrate；不能
+                    // 按常见的 bitrate、stereo、sampleRate 顺序传递，否则会生成
+                    // 64000Hz AAC，部分 Android/Media3 解码器会拒绝这种音频流。
+                    val audioReady = stream.prepareAudio(44_100, true, 64_000)
+                    if (!videoReady || !audioReady) {
+                        stream.release()
+                        throw IllegalStateException("摄像头或麦克风编码器初始化失败")
+                    }
+                    pushStream = stream
+                    if (previewRequested) publisherSurface?.let(stream::startPreview)
+                }
+        }.getOrElse { error ->
+            Log.e(LOG_TAG, "Create RTMP stream failed", error)
+            emit(LiveMediaEventType.ERROR, error.message ?: "创建 Android 推流器失败")
+            null
+        }
+    }
+
     private fun emit(type: LiveMediaEventType, message: String, retryCount: Int? = null) {
         // Pigeon 的 FlutterApi 是 suspend 调用，因此在主线程协程中发送；异常不应
         // 反向打崩播放器生命周期。
@@ -224,8 +318,57 @@ private class AndroidLiveMediaEngine(
 
     fun dispose() {
         cancelReconnect()
+        runCatching { pushStream?.stopStream() }
+        runCatching { pushStream?.stopPreview() }
+        runCatching { pushStream?.release() }
+        pushStream = null
         player.release()
         eventScope.cancel()
+    }
+
+    fun attachPublisherSurface(surfaceView: SurfaceView) {
+        publisherSurface = surfaceView
+        if (previewRequested && pushStream?.isOnPreview == false) {
+            pushStream?.startPreview(surfaceView)
+        }
+    }
+
+    fun detachPublisherSurface(surfaceView: SurfaceView) {
+        if (publisherSurface === surfaceView) publisherSurface = null
+    }
+
+    /** RootEncoder 的连接回调被转换成跨平台 Pigeon 事件。 */
+    private inner class PushConnectChecker : ConnectChecker {
+        override fun onConnectionStarted(url: String) {
+            Log.i(LOG_TAG, "RTMP connection started: $url")
+        }
+
+        override fun onConnectionSuccess() {
+            Log.i(LOG_TAG, "RTMP connection success")
+            emit(LiveMediaEventType.PUSH_STARTED, "RTMP 推流已连接")
+        }
+
+        override fun onNewBitrate(bitrate: Long) {
+            Log.d(LOG_TAG, "RTMP bitrate=$bitrate")
+        }
+
+        override fun onDisconnect() {
+            Log.i(LOG_TAG, "RTMP disconnected")
+            emit(LiveMediaEventType.ERROR, "RTMP 推流连接已断开")
+        }
+
+        override fun onAuthError() {
+            emit(LiveMediaEventType.ERROR, "RTMP 推流鉴权失败")
+        }
+
+        override fun onAuthSuccess() {
+            Log.i(LOG_TAG, "RTMP authentication success")
+        }
+
+        override fun onConnectionFailed(reason: String) {
+            Log.w(LOG_TAG, "RTMP connection failed: $reason")
+            emit(LiveMediaEventType.ERROR, "RTMP 推流连接失败：$reason")
+        }
     }
 }
 
@@ -255,5 +398,36 @@ private class AndroidLiveMediaPlayerView(
     override fun dispose() {
         // 只解除视图与播放器的引用，不在这里 release 全局播放器；插件销毁时统一释放。
         playerView.player = null
+    }
+}
+
+private class AndroidLiveMediaPublisherViewFactory(
+    private val engine: AndroidLiveMediaEngine,
+) : PlatformViewFactory(StandardMessageCodec.INSTANCE) {
+    override fun create(context: Context, viewId: Int, args: Any?): PlatformView {
+        return AndroidLiveMediaPublisherView(context, engine)
+    }
+}
+
+/**
+ * 主播 PlatformView。
+ *
+ * SurfaceView 只是把摄像头预览画面交给 Flutter；RTMP 连接、编码和重连都由
+ * AndroidLiveMediaEngine 控制，所以页面销毁时不会把业务状态藏在 View 里。
+ */
+private class AndroidLiveMediaPublisherView(
+    context: Context,
+    private val engine: AndroidLiveMediaEngine,
+) : PlatformView {
+    private val surfaceView = SurfaceView(context)
+
+    init {
+        engine.attachPublisherSurface(surfaceView)
+    }
+
+    override fun getView(): View = surfaceView
+
+    override fun dispose() {
+        engine.detachPublisherSurface(surfaceView)
     }
 }
