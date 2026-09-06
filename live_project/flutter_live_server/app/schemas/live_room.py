@@ -38,6 +38,9 @@ class LiveRoomResponse(BaseModel):
     status: str
     play_url: str = Field(serialization_alias="playUrl")
     category: str
+    following: bool = False
+    liked: bool = False
+    like_count: int = Field(default=0, serialization_alias="likeCount")
     created_at: datetime = Field(serialization_alias="createdAt")
     updated_at: datetime = Field(serialization_alias="updatedAt")
 

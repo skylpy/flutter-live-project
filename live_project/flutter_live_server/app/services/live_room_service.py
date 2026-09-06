@@ -1,11 +1,14 @@
+from __future__ import annotations
+
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.core.config import settings
-from app.core.exceptions import NotFoundException
+from app.core.exceptions import AppException, NotFoundException
 from app.models.live_room import LiveRoom
 from app.repositories.live_room_repository import LiveRoomRepository
 from app.schemas.live_room import CreateLiveRoomRequest
+from app.services.media_server_client import MediaServerClient
 
 
 class LiveRoomService:
@@ -14,8 +17,13 @@ class LiveRoomService:
     Service 负责把“找不到房间”转换为业务异常，Repository 只返回 None。
     """
 
-    def __init__(self, repository: LiveRoomRepository) -> None:
+    def __init__(
+        self,
+        repository: LiveRoomRepository,
+        media_server: MediaServerClient | None = None,
+    ) -> None:
         self.repository = repository
+        self.media_server = media_server or MediaServerClient()
 
     def get_living_rooms(self) -> list[LiveRoom]:
         """获取首页需要的正在直播房间。"""
@@ -61,8 +69,16 @@ class LiveRoomService:
         return self.repository.add(room)
 
     def start_room(self, room_id: int) -> LiveRoom:
-        """将房间切换为 living，供观众列表立即发现。"""
+        """确认 SRS 已收到推流后再切换为 living。
+
+        控制 API 暂时不可用时不直接误判为推流失败；但 SRS 明确可用且在
+        有界等待后仍没有 active 流时，拒绝把房间展示给观众。
+        """
         room = self._get_room(room_id)
+        if room.stream_name:
+            media_state = self.media_server.wait_for_active_stream(room.stream_name)
+            if media_state is False:
+                raise AppException("媒体服务器尚未确认推流", code=40903, status_code=409)
         room.status = "living"
         room.online_count = max(room.online_count, 1)
         room.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)

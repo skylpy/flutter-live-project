@@ -1,6 +1,7 @@
 import '../../domain/repositories/live_repository.dart';
 import '../datasources/live_remote_data_source.dart';
 import '../models/live_room.dart';
+import '../models/live_interaction.dart';
 
 /// LiveRepository 的 HTTP 实现。
 ///
@@ -35,4 +36,12 @@ class LiveRepositoryImpl implements LiveRepository {
   @override
   Future<LiveRoom> stopLiveRoom(String roomId) =>
       _dataSource.stopLiveRoom(roomId);
+
+  @override
+  Future<LiveInteraction> toggleFollow(String roomId) =>
+      _dataSource.toggleFollow(roomId);
+
+  @override
+  Future<LiveInteraction> toggleLike(String roomId) =>
+      _dataSource.toggleLike(roomId);
 }

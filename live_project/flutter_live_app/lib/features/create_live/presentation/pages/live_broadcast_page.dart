@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_live_core/flutter_live_core.dart';
@@ -46,13 +47,19 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
     _engineSubscription = _engine.events.listen(_onEngineEvent);
 
     // 主播直播通常使用 9:16 画布。只在主播页锁定竖屏，离开后恢复系统默认方向，
-    // 避免观众播放页和其他 Tab 被错误限制为竖屏。
-    unawaited(
-      SystemChrome.setPreferredOrientations(const [
-        DeviceOrientation.portraitUp,
-      ]),
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) => _startBroadcast());
+    // 避免观众播放页和其他 Tab 被错误限制为竖屏。这里等待系统完成方向切换后
+    // 才启动摄像头，避免真机仍处于横屏时先创建出横向的预览 Surface。
+    unawaited(_lockPortraitAndStart());
+  }
+
+  Future<void> _lockPortraitAndStart() async {
+    await SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+    ]);
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_startBroadcast());
+    });
   }
 
   @override
@@ -61,7 +68,12 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
     // 页面被系统返回手势销毁时兜底停止原生推流。正常点击结束按钮时，
     // _stopBroadcast 已经先完成后端状态同步，这里再次 stopPush 也是幂等的。
     unawaited(_engine.stopPush());
-    unawaited(SystemChrome.setPreferredOrientations(const []));
+    // Android 在 Manifest 中固定为 portrait；这里不能再传空列表，
+    // 否则会把 Activity 恢复成 UNSPECIFIED，系统又可能切回横屏。
+    // iOS 没有同样的 Manifest 固定，因此离开主播页后恢复系统默认方向。
+    if (defaultTargetPlatform != TargetPlatform.android) {
+      unawaited(SystemChrome.setPreferredOrientations(const []));
+    }
     super.dispose();
   }
 
@@ -94,19 +106,31 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
 
   Future<void> _markRoomLiving() async {
     if (_isLiving) return;
-    try {
-      await ref
-          .read(liveRepositoryProvider)
-          .startLiveRoom(widget.room.id.toString());
-      if (!mounted) return;
-      setState(() {
-        _isLiving = true;
-        _status = '直播中';
-      });
-      ref.invalidate(liveListControllerProvider);
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _status = '推流已连接，但房间状态同步失败：$error');
+    Object? lastError;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        // 后端会再向 SRS 确认 stream.active。iOS/Android 刚收到 publish
+        // 成功事件时，SRS 的状态 API 可能还差几百毫秒才更新，所以这里做少量
+        // 有界重试；既不会无限请求，也不会把“黑屏房间”标记成 living。
+        await ref
+            .read(liveRepositoryProvider)
+            .startLiveRoom(widget.room.id.toString());
+        if (!mounted) return;
+        setState(() {
+          _isLiving = true;
+          _status = '直播中';
+        });
+        ref.invalidate(liveListControllerProvider);
+        return;
+      } catch (error) {
+        lastError = error;
+        if (attempt < 3) {
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+        }
+      }
+    }
+    if (mounted) {
+      setState(() => _status = '推流已连接，但房间状态同步失败：$lastError');
     }
   }
 

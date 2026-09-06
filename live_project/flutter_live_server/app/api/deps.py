@@ -50,3 +50,17 @@ def get_current_user(
     if user is None or not user.is_active:
         raise AppException("用户不存在或已停用", code=40102, status_code=401)
     return user
+
+
+def get_optional_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+):
+    """读取可选登录用户。
+
+    直播详情仍允许游客观看，因此没有 Authorization 时返回 None；如果请求
+    明确携带了无效 Token，仍然按统一 401 规则返回错误，避免静默使用错误身份。
+    """
+    if credentials is None:
+        return None
+    return get_current_user(credentials=credentials, db=db)

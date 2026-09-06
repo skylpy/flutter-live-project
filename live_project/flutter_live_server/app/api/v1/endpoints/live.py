@@ -1,6 +1,10 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, Path
 
-from app.api.deps import get_live_room_service
+from app.api.deps import get_live_room_service, get_optional_current_user
+from app.api.deps_social import get_social_service
+from app.models.user import User
 from app.schemas.common import ApiResponse, success
 from app.schemas.live_room import (
     CreateLiveRoomRequest,
@@ -8,6 +12,7 @@ from app.schemas.live_room import (
     LiveRoomResponse,
 )
 from app.services.live_room_service import LiveRoomService
+from app.services.social_service import SocialService
 
 router = APIRouter(prefix="/live", tags=["live"])
 
@@ -33,9 +38,18 @@ def get_live_rooms(
 def get_live_room_detail(
     room_id: int = Path(..., ge=1),
     service: LiveRoomService = Depends(get_live_room_service),
+    social_service: SocialService = Depends(get_social_service),
+    user: Optional[User] = Depends(get_optional_current_user),
 ) -> ApiResponse[LiveRoomResponse]:
-    """返回一个直播间详情；不存在时由 Service 抛出统一 404 异常。"""
-    return success(service.get_room_detail(room_id))
+    """返回详情和当前用户的互动快照；游客仍可观看。"""
+    room = service.get_room_detail(room_id)
+    response = LiveRoomResponse.model_validate(room).model_copy(
+        update=social_service.room_interaction_state(
+            room_id,
+            user.id if user is not None else None,
+        )
+    )
+    return success(response)
 
 
 @router.post("/rooms/{room_id}/start", response_model=ApiResponse[LiveRoomHostResponse])

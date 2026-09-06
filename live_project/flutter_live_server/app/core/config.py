@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     media_rtmp_port: int = 1935
     media_http_port: int = 8080
     media_app: str = "live"
+    # FastAPI 查询 SRS 控制 API 的地址；Docker 部署时覆盖为 srs:1985。
+    media_internal_host: str = "192.168.0.111"
+    media_internal_api_port: int = 1985
+    live_room_reconciliation_grace_seconds: int = 15
 
     mysql_host: str = "127.0.0.1"
     mysql_port: int = 3306

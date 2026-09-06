@@ -1,42 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/create_live/presentation/pages/create_live_page.dart';
 import '../../features/create_live/presentation/pages/live_broadcast_page.dart';
-import '../../features/auth/presentation/pages/login_page.dart';
+import '../../features/discover/presentation/pages/discover_page.dart';
 import '../../features/home/presentation/pages/home_page.dart';
-import '../../features/live/presentation/pages/live_page.dart';
-import '../../features/live/presentation/pages/live_room_page.dart';
 import '../../features/live/data/models/live_room.dart';
+import '../../features/live/presentation/pages/live_room_page.dart';
 import '../../features/message/presentation/pages/message_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
+import '../../features/profile/presentation/pages/settings_page.dart';
 import '../../shared/widgets/main_scaffold.dart';
 
-// 根 Navigator 承载不属于底部 Tab 的页面，例如全屏直播间和登录页。
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
-final _homeNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'home');
+final _liveNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'live');
 final _discoverNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'discover');
-final _createLiveNavigatorKey = GlobalKey<NavigatorState>(
-  debugLabel: 'create-live',
-);
 final _messageNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'message');
 final _profileNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'profile');
 
-/// 全局路由表。
-///
-/// 五个 StatefulShellBranch 各自拥有 Navigator，所以切换 Tab 后仍能保留
-/// 原来的子页面和返回栈。直播间指定 root navigator，因此不会显示底部栏。
+/// 四个 StatefulShell 分支保存各自导航状态；直播间/设置/主播页使用 root navigator。
 final appRouter = GoRouter(
   navigatorKey: _rootNavigatorKey,
   initialLocation: '/home',
   routes: [
     StatefulShellRoute.indexedStack(
-      builder: (context, state, navigationShell) {
-        return MainScaffold(navigationShell: navigationShell);
-      },
+      builder: (context, state, navigationShell) =>
+          MainScaffold(navigationShell: navigationShell),
       branches: [
         StatefulShellBranch(
-          navigatorKey: _homeNavigatorKey,
+          navigatorKey: _liveNavigatorKey,
           initialLocation: '/home',
           routes: [
             GoRoute(
@@ -51,17 +44,7 @@ final appRouter = GoRouter(
           routes: [
             GoRoute(
               path: '/discover',
-              builder: (context, state) => const LivePage(),
-            ),
-          ],
-        ),
-        StatefulShellBranch(
-          navigatorKey: _createLiveNavigatorKey,
-          initialLocation: '/create-live',
-          routes: [
-            GoRoute(
-              path: '/create-live',
-              builder: (context, state) => const CreateLivePage(),
+              builder: (context, state) => const DiscoverPage(),
             ),
           ],
         ),
@@ -94,12 +77,14 @@ final appRouter = GoRouter(
           LiveRoomPage(roomId: state.pathParameters['roomId']!),
     ),
     GoRoute(
+      path: '/create-live',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const CreateLivePage(),
+    ),
+    GoRoute(
       path: '/live-broadcast/:roomId',
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) {
-        // 主播页由开播表单通过 extra 传入刚创建的房间快照，里面包含服务端
-        // 生成的 pushUrl。若用户直接输入深链接而没有 extra，给出明确提示，
-        // 避免把一个没有推流地址的房间交给原生引擎。
         final room = state.extra;
         if (room is! LiveRoom) {
           return const Scaffold(
@@ -108,6 +93,11 @@ final appRouter = GoRouter(
         }
         return LiveBroadcastPage(room: room);
       },
+    ),
+    GoRoute(
+      path: '/settings',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const SettingsPage(),
     ),
     GoRoute(
       path: '/login',

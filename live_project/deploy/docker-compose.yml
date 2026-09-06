@@ -1,0 +1,78 @@
+services:
+  api:
+    build:
+      context: ../flutter_live_server
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      srs:
+        condition: service_started
+    ports:
+      - "18000:8000"
+    mem_limit: 320m
+    cpus: 0.50
+
+  mysql:
+    image: docker.m.daocloud.io/library/mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    command:
+      - --innodb-buffer-pool-size=128M
+      - --max-connections=40
+      - --performance-schema=OFF
+    volumes:
+      - mysql_data:/var/lib/mysql
+    expose:
+      - "3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    mem_limit: 512m
+    cpus: 0.50
+
+  redis:
+    image: docker.m.daocloud.io/library/redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    mem_limit: 96m
+    cpus: 0.25
+
+  srs:
+    image: docker.m.daocloud.io/ossrs/srs:6
+    restart: unless-stopped
+    environment:
+      SRS_CANDIDATE: ${SRS_CANDIDATE}
+    ports:
+      - "11935:1935"
+      - "18081:8080"
+    expose:
+      - "1985"
+    volumes:
+      - ../media_server/srs.conf:/usr/local/srs/conf/live.conf:ro
+    command: ["./objs/srs", "-c", "conf/live.conf"]
+    mem_limit: 256m
+    cpus: 0.50
+
+volumes:
+  mysql_data:
+  redis_data:

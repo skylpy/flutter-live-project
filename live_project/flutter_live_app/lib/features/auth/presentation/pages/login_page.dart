@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../controllers/auth_controller.dart';
+import '../../../discover/presentation/controllers/feed_controller.dart';
+import '../../../message/presentation/controllers/message_controller.dart';
+import '../../../profile/presentation/controllers/profile_controller.dart';
 
 /// 登录和注册共用的页面。
 ///
@@ -19,6 +22,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _passwordController = TextEditingController();
   final _displayNameController = TextEditingController();
   bool _registerMode = false;
+  bool _shownExpiryNotice = false;
 
   @override
   void dispose() {
@@ -31,8 +35,24 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
+    final sessionExpired =
+        GoRouterState.of(context).uri.queryParameters['reason'] ==
+        'session_expired';
+    if (sessionExpired && !_shownExpiryNotice) {
+      _shownExpiryNotice = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('登录状态已失效，请重新登录')));
+        }
+      });
+    }
     ref.listen(authControllerProvider, (previous, next) {
       if (!next.isLoading && next.hasValue && next.value != null && mounted) {
+        // 登录成功后，之前因 401 进入错误态的页面控制器需要重新请求。
+        ref.invalidate(feedControllerProvider);
+        ref.invalidate(messageControllerProvider);
+        ref.invalidate(profileControllerProvider);
         context.go('/home');
       }
     });

@@ -1,4 +1,5 @@
 import '../../../../core/network/api_client.dart';
+import '../models/live_interaction.dart';
 import '../models/live_room.dart';
 
 /// 直播间 REST 数据来源。
@@ -67,6 +68,22 @@ class LiveRemoteDataSource {
     final response = await _apiClient.post<LiveRoom>(
       '/live/rooms/$roomId/stop',
       parseData: _parseRoom,
+    );
+    return response.data;
+  }
+
+  Future<LiveInteraction> toggleFollow(String roomId) async {
+    final response = await _apiClient.post<LiveInteraction>(
+      '/live/rooms/$roomId/follow',
+      parseData: LiveInteraction.fromJson,
+    );
+    return response.data;
+  }
+
+  Future<LiveInteraction> toggleLike(String roomId) async {
+    final response = await _apiClient.post<LiveInteraction>(
+      '/live/rooms/$roomId/like',
+      parseData: LiveInteraction.fromJson,
     );
     return response.data;
   }

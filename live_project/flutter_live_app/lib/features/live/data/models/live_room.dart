@@ -15,6 +15,9 @@ class LiveRoom {
     required this.pushUrl,
     required this.streamName,
     required this.category,
+    this.following = false,
+    this.liked = false,
+    this.likeCount = 0,
     this.createdAt,
     this.updatedAt,
   });
@@ -30,6 +33,9 @@ class LiveRoom {
   final String pushUrl;
   final String streamName;
   final String category;
+  final bool following;
+  final bool liked;
+  final int likeCount;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -47,6 +53,9 @@ class LiveRoom {
       pushUrl: _string(json['pushUrl'] ?? json['push_url']),
       streamName: _string(json['streamName'] ?? json['stream_name']),
       category: _string(json['category']),
+      following: json['following'] == true,
+      liked: json['liked'] == true,
+      likeCount: _int(json['likeCount'] ?? json['like_count']),
       createdAt: _date(json['createdAt'] ?? json['created_at']),
       updatedAt: _date(json['updatedAt'] ?? json['updated_at']),
     );
@@ -66,6 +75,9 @@ class LiveRoom {
       'pushUrl': pushUrl,
       'streamName': streamName,
       'category': category,
+      'following': following,
+      'liked': liked,
+      'likeCount': likeCount,
       'createdAt': createdAt?.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
     };

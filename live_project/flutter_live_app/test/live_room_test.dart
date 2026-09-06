@@ -25,5 +25,19 @@ void main() {
     expect(restored.onlineCount, 42);
     expect(restored.status, 'living');
     expect(restored.playUrl, endsWith('.m3u8'));
+    expect(restored.following, isFalse);
+    expect(restored.liked, isFalse);
+    expect(restored.likeCount, 0);
+
+    // 详情接口返回当前用户状态时，模型必须把 camelCase 字段还原成页面状态。
+    final withInteraction = LiveRoom.fromJson(<String, Object?>{
+      ...room.toJson(),
+      'following': true,
+      'liked': true,
+      'likeCount': 12,
+    });
+    expect(withInteraction.following, isTrue);
+    expect(withInteraction.liked, isTrue);
+    expect(withInteraction.likeCount, 12);
   });
 }

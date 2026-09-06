@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_theme.dart';
 import '../../data/models/live_room.dart';
 
-/// 首页直播卡片。
-///
-/// coverUrl 为空时使用本地占位，不请求网络图片；有地址时才创建 Image.network。
+/// 两列直播卡片。没有封面地址时使用本地渐变占位，不请求网络图片。
 class LiveRoomCard extends StatelessWidget {
   const LiveRoomCard({required this.room, required this.onTap, super.key});
-
   final LiveRoom room;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AppTheme.tokens(context);
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -20,27 +19,18 @@ class LiveRoomCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            AspectRatio(
-              aspectRatio: 1.25,
+            Expanded(
               child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  Positioned.fill(
-                    child: room.coverUrl.isEmpty
-                        ? const _CoverPlaceholder()
-                        : Image.network(
-                            room.coverUrl,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) =>
-                                const _CoverPlaceholder(),
-                          ),
-                  ),
+                  _Cover(room: room),
                   Positioned(
-                    top: 10,
-                    left: 10,
+                    top: 9,
+                    left: 9,
                     child: DecoratedBox(
-                      decoration: const BoxDecoration(
-                        color: Colors.redAccent,
-                        borderRadius: BorderRadius.all(Radius.circular(6)),
+                      decoration: BoxDecoration(
+                        color: tokens.live,
+                        borderRadius: BorderRadius.circular(6),
                       ),
                       child: const Padding(
                         padding: EdgeInsets.symmetric(
@@ -58,17 +48,51 @@ class LiveRoomCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  Positioned(
+                    left: 9,
+                    bottom: 8,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 4,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.people_alt_outlined,
+                              size: 13,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              _formatCount(room.onlineCount),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              padding: const EdgeInsets.fromLTRB(11, 9, 11, 11),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     room.title,
-                    maxLines: 2,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
@@ -76,40 +100,37 @@ class LiveRoomCard extends StatelessWidget {
                   Row(
                     children: [
                       CircleAvatar(
-                        radius: 12,
-                        backgroundColor: Theme.of(context)
-                            .colorScheme
-                            .secondaryContainer,
+                        radius: 11,
+                        backgroundColor: tokens.primary.withValues(alpha: 0.25),
                         child: Text(
-                          room.anchorName.isEmpty ? '?' : room.anchorName[0],
+                          room.anchorName.isEmpty
+                              ? '?'
+                              : room.anchorName.substring(0, 1),
+                          style: const TextStyle(fontSize: 11),
                         ),
                       ),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          room.anchorName,
+                          room.anchorName.isEmpty ? '匿名主播' : room.anchorName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall,
+                          style: TextStyle(
+                            color: tokens.textSecondary,
+                            fontSize: 12,
+                          ),
                         ),
-                      ),
-                      Icon(
-                        Icons.people_alt_outlined,
-                        size: 15,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 3),
-                      Text(
-                        _formatCount(room.onlineCount),
-                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
                   ),
                   if (room.category.isNotEmpty) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     Text(
                       room.category,
-                      style: Theme.of(context).textTheme.labelSmall,
+                      style: TextStyle(
+                        color: tokens.textSecondary,
+                        fontSize: 11,
+                      ),
                     ),
                   ],
                 ],
@@ -125,14 +146,43 @@ class LiveRoomCard extends StatelessWidget {
       count >= 10000 ? '${(count / 10000).toStringAsFixed(1)}万' : '$count';
 }
 
-class _CoverPlaceholder extends StatelessWidget {
-  const _CoverPlaceholder();
+class _Cover extends StatelessWidget {
+  const _Cover({required this.room});
+  final LiveRoom room;
+  @override
+  Widget build(BuildContext context) => room.coverUrl.isEmpty
+      ? _Placeholder(room: room)
+      : Image.network(
+          room.coverUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stack) => _Placeholder(room: room),
+        );
+}
 
+class _Placeholder extends StatelessWidget {
+  const _Placeholder({required this.room});
+  final LiveRoom room;
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: Theme.of(context).colorScheme.primaryContainer,
-      child: const Center(child: Icon(Icons.live_tv, size: 42)),
+    final tokens = AppTheme.tokens(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            tokens.secondary.withValues(alpha: 0.7),
+            tokens.primary.withValues(alpha: 0.3),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.live_tv,
+          size: 42,
+          color: Colors.white.withValues(alpha: 0.9),
+        ),
+      ),
     );
   }
 }

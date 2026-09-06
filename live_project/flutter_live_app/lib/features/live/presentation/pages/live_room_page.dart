@@ -10,6 +10,7 @@ import '../../data/models/live_chat_message.dart';
 import '../../../../core/network/api_provider.dart';
 import '../../../../core/media/live_engine_provider.dart';
 import '../controllers/live_room_controller.dart';
+import '../controllers/live_list_controller.dart';
 import '../widgets/live_room_player.dart';
 
 /// 全屏直播间页面。
@@ -53,10 +54,19 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
   late final LiveEngine _engine;
   StreamSubscription<LiveEngineEvent>? _engineSubscription;
   String? _engineStatus;
+  final List<LiveChatMessage> _danmaku = [];
+  bool _following = false;
+  bool _liked = false;
+  int _likeCount = 0;
 
   @override
   void initState() {
     super.initState();
+    // 详情接口已经返回当前用户的历史互动状态，页面首帧直接使用它，
+    // 避免按钮先显示默认值、随后又发生一次视觉跳变。
+    _following = widget.room.following;
+    _liked = widget.room.liked;
+    _likeCount = widget.room.likeCount;
     // 监听平台无关的 LiveEngineEvent，页面不直接认识 AVPlayer/ExoPlayer。
     _engine = ref.read(liveEngineProvider);
     _engineSubscription = _engine.events.listen((event) {
@@ -87,6 +97,33 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
     await _engine.play(widget.room.playUrl);
   }
 
+  void _appendDanmaku(LiveChatMessage message) {
+    if (!mounted || message.type != 'chat') return;
+    setState(() {
+      _danmaku.add(message);
+      if (_danmaku.length > 8) _danmaku.removeAt(0);
+    });
+  }
+
+  Future<void> _toggleFollow() async {
+    final interaction = await ref
+        .read(liveRepositoryProvider)
+        .toggleFollow(widget.room.id.toString());
+    if (mounted) setState(() => _following = interaction.active);
+  }
+
+  Future<void> _toggleLike() async {
+    final interaction = await ref
+        .read(liveRepositoryProvider)
+        .toggleLike(widget.room.id.toString());
+    if (mounted) {
+      setState(() {
+        _liked = interaction.active;
+        _likeCount = interaction.count;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -97,14 +134,28 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
             top: 12,
             left: 16,
             right: 16,
-            child: _RoomHeader(room: widget.room),
+            child: _RoomHeader(
+              room: widget.room,
+              following: _following,
+              onFollow: _toggleFollow,
+            ),
           ),
-          const Positioned(left: 16, bottom: 102, child: _DanmakuList()),
+          Positioned(
+            left: 16,
+            bottom: 102,
+            child: _DanmakuList(messages: _danmaku),
+          ),
           Positioned(
             left: 16,
             right: 16,
             bottom: 18,
-            child: _RoomInputBar(roomId: widget.room.id.toString()),
+            child: _RoomInputBar(
+              roomId: widget.room.id.toString(),
+              onMessage: _appendDanmaku,
+              liked: _liked,
+              likeCount: _likeCount,
+              onLike: _toggleLike,
+            ),
           ),
         ],
       ),
@@ -113,9 +164,15 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
 }
 
 class _RoomHeader extends StatelessWidget {
-  const _RoomHeader({required this.room});
+  const _RoomHeader({
+    required this.room,
+    required this.following,
+    required this.onFollow,
+  });
 
   final LiveRoom room;
+  final bool following;
+  final VoidCallback onFollow;
 
   @override
   Widget build(BuildContext context) {
@@ -147,7 +204,10 @@ class _RoomHeader extends StatelessWidget {
             ],
           ),
         ),
-        OutlinedButton(onPressed: () {}, child: const Text('关注')),
+        OutlinedButton(
+          onPressed: onFollow,
+          child: Text(following ? '已关注' : '关注'),
+        ),
         const SizedBox(width: 8),
         IconButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -161,17 +221,17 @@ class _RoomHeader extends StatelessWidget {
 }
 
 class _DanmakuList extends StatelessWidget {
-  // 当前使用固定演示数据，后续可以替换为 WebSocket 消息列表。
-  const _DanmakuList();
+  const _DanmakuList({required this.messages});
+
+  final List<LiveChatMessage> messages;
 
   @override
   Widget build(BuildContext context) {
-    return const Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _DanmakuLine(name: '小明', message: '主播晚上好'),
-        _DanmakuLine(name: 'Kevin', message: 'Flutter 666'),
-        _DanmakuLine(name: 'Summer', message: '🌹 送出玫瑰 × 10'),
+        for (final item in messages)
+          _DanmakuLine(name: item.userName, message: item.message),
       ],
     );
   }
@@ -205,9 +265,19 @@ class _DanmakuLine extends StatelessWidget {
 }
 
 class _RoomInputBar extends ConsumerStatefulWidget {
-  const _RoomInputBar({required this.roomId});
+  const _RoomInputBar({
+    required this.roomId,
+    required this.onMessage,
+    required this.liked,
+    required this.likeCount,
+    required this.onLike,
+  });
 
   final String roomId;
+  final ValueChanged<LiveChatMessage> onMessage;
+  final bool liked;
+  final int likeCount;
+  final VoidCallback onLike;
 
   @override
   ConsumerState<_RoomInputBar> createState() => _RoomInputBarState();
@@ -245,6 +315,7 @@ class _RoomInputBarState extends ConsumerState<_RoomInputBar> {
     try {
       await _chatClient.connect(widget.roomId, token);
       _subscription = _chatClient.messages.listen((message) {
+        widget.onMessage(message);
         if (mounted && message.type == 'error') {
           setState(() => _status = message.message);
         }
@@ -300,10 +371,10 @@ class _RoomInputBarState extends ConsumerState<_RoomInputBar> {
               ),
             ),
             IconButton(
-              onPressed: () {},
-              color: Colors.white,
-              icon: const Icon(Icons.card_giftcard),
-              tooltip: '礼物',
+              onPressed: widget.onLike,
+              color: widget.liked ? Colors.pinkAccent : Colors.white,
+              icon: const Icon(Icons.favorite),
+              tooltip: '点赞 ${widget.likeCount}',
             ),
             IconButton(
               onPressed: _send,

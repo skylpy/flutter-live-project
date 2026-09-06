@@ -1,4 +1,5 @@
 import '../../data/models/live_room.dart';
+import '../../data/models/live_interaction.dart';
 
 /// 直播业务需要的最小数据接口。
 ///
@@ -17,4 +18,8 @@ abstract interface class LiveRepository {
   Future<LiveRoom> startLiveRoom(String roomId);
 
   Future<LiveRoom> stopLiveRoom(String roomId);
+
+  Future<LiveInteraction> toggleFollow(String roomId);
+
+  Future<LiveInteraction> toggleLike(String roomId);
 }

@@ -1,5 +1,6 @@
 import '../../domain/repositories/live_repository.dart';
 import '../models/live_room.dart';
+import '../models/live_interaction.dart';
 
 /// 真机播放器联调使用的本地直播数据。
 ///
@@ -93,4 +94,12 @@ class LiveMockRepository implements LiveRepository {
   @override
   Future<LiveRoom> stopLiveRoom(String roomId) =>
       throw UnsupportedError('Mock 数据源不支持真实开播');
+
+  @override
+  Future<LiveInteraction> toggleFollow(String roomId) =>
+      throw UnsupportedError('Mock 数据源不支持关注');
+
+  @override
+  Future<LiveInteraction> toggleLike(String roomId) =>
+      throw UnsupportedError('Mock 数据源不支持点赞');
 }

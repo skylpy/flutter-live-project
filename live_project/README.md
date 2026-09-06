@@ -2,15 +2,18 @@
 
 新人阅读入口：先看 [ARCHITECTURE.md](ARCHITECTURE.md)，再沿着文档中的链路阅读源码。业务源码已补充中文注释，说明每个层的职责、调用原因和资源释放方式。
 
-前后端分离的跨平台直播 App 基础项目：
+前后端分离的跨平台直播 App 基础项目。当前目录就是正式源码根目录，Android
+Studio 和 Flutter 命令都应从这里进入，不要再打开上一级的同名备份目录：
 
 ```text
 live_project/
 ├── flutter_live_app/     # Flutter / Riverpod / go_router / Dio
 ├── flutter_live_server/  # FastAPI / SQLAlchemy / MySQL / Alembic
-└── packages/
+├── packages/
     ├── flutter_live_core/          # LiveEngine 跨平台协议与 Stub 实现
     └── flutter_live_media_plugin/  # iOS/macOS/Android Pigeon + PlatformView + 原生播放器
+├── deploy/                         # Docker Compose 部署配置
+└── docs/                           # 需求和实现提示文档
 ```
 
 当前已完成第一阶段 REST 闭环、第二阶段认证与实时基础能力、第三阶段媒体引擎抽象层、第四阶段 iOS/macOS Plugin 通信与 PlatformView 占位闭环，以及第五阶段 Apple 平台 AVPlayer 播放链路；推流和拉流协议适配仍未实现。

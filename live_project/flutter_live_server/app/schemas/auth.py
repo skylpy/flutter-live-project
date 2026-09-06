@@ -6,9 +6,16 @@ from pydantic import BaseModel, ConfigDict, Field
 class UserRegisterRequest(BaseModel):
     """注册请求，字段约束在进入 Service 前完成。"""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     username: str = Field(min_length=3, max_length=50, pattern=r"^[A-Za-z0-9_]+$")
     password: str = Field(min_length=6, max_length=128)
-    display_name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    display_name: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        alias="displayName",
+    )
 
 
 class UserLoginRequest(BaseModel):
