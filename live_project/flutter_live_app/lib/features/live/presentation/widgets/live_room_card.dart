@@ -13,6 +13,8 @@ class LiveRoomCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AppTheme.tokens(context);
     return Card(
+      // 用稳定的房间 ID 标识卡片，真机自动化和无障碍测试不依赖标题文案。
+      key: ValueKey('live-room-${room.id}'),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
