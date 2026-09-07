@@ -10,4 +10,8 @@ class MessageRepositoryImpl implements MessageRepository {
   @override
   Future<List<MessageConversation>> getConversations() =>
       _dataSource.getConversations();
+
+  @override
+  Future<void> markConversationRead(int userId) =>
+      _dataSource.markConversationRead(userId);
 }

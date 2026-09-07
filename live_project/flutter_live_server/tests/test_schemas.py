@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from app.models.live_room import LiveRoom
 from app.schemas.live_room import LiveRoomResponse
+from app.schemas.social import SearchResponse
 
 
 def test_live_room_response_uses_flutter_camel_case() -> None:
@@ -24,3 +25,27 @@ def test_live_room_response_uses_flutter_camel_case() -> None:
 
     assert payload["anchorName"] == "主播"
     assert payload["onlineCount"] == 10
+
+
+def test_phase4_search_response_uses_flutter_camel_case() -> None:
+    payload = SearchResponse(
+        users=[{"id": 1, "username": "kevin", "display_name": "Kevin"}],
+        rooms=[
+            {
+                "id": 2,
+                "title": "测试直播",
+                "anchor_name": "Kevin",
+                "online_count": 12,
+                "status": "living",
+                "category": "技术",
+            }
+        ],
+        posts=[
+            {"id": 3, "author": "Kevin", "body": "测试动态", "time_label": "刚刚"}
+        ],
+    ).model_dump(by_alias=True)
+
+    assert payload["users"][0]["displayName"] == "Kevin"
+    assert payload["rooms"][0]["anchorName"] == "Kevin"
+    assert payload["rooms"][0]["onlineCount"] == 12
+    assert payload["posts"][0]["timeLabel"] == "刚刚"

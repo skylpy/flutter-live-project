@@ -5,10 +5,13 @@ from app.models.live_room import LiveRoom
 from app.models.user import User
 from app.repositories.social_repository import SocialRepository
 from app.schemas.social import (
+    FollowedUserResponse,
     FeedPostResponse,
     MessageConversationResponse,
     MessageSendRequest,
+    NotificationResponse,
     ProfileResponse,
+    SearchResponse,
     ToggleInteractionResponse,
     format_time_label,
 )
@@ -67,6 +70,21 @@ class SocialService:
             raise NotFoundException(message="接收用户不存在", code=40412)
         message = self.repository.send_message(user.id, recipient.id, payload.body)
         return {"id": message.id, "body": message.body}
+
+    def mark_conversation_read(self, user: User, other_user_id: int) -> None:
+        self.repository.mark_conversation_read(user.id, other_user_id)
+
+    def notifications(self, user: User) -> list[NotificationResponse]:
+        return [NotificationResponse(**item) for item in self.repository.list_notifications(user.id)]
+
+    def mark_notifications_read(self, user: User) -> None:
+        self.repository.mark_notifications_read(user.id)
+
+    def following(self, user: User) -> list[FollowedUserResponse]:
+        return [FollowedUserResponse(**item) for item in self.repository.list_following(user.id)]
+
+    def search(self, query: str) -> SearchResponse:
+        return SearchResponse(**self.repository.search(query))
 
     def toggle_room_follow(self, room: LiveRoom, user: User) -> ToggleInteractionResponse:
         active, count = self.repository.toggle_room_follow(room.id, user.id)

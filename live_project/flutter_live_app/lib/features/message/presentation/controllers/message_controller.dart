@@ -23,9 +23,10 @@ class MessageController extends AsyncNotifier<List<MessageConversation>> {
   Future<List<MessageConversation>> build() =>
       ref.read(messageRepositoryProvider).getConversations();
 
-  void markRead(int userId) {
+  Future<void> markRead(int userId) async {
     final current = state.asData?.value;
     if (current == null) return;
+    await ref.read(messageRepositoryProvider).markConversationRead(userId);
     state = AsyncData([
       for (final item in current)
         item.userId == userId ? item.markRead() : item,

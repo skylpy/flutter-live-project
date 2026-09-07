@@ -23,4 +23,11 @@ class MessageRemoteDataSource {
     );
     return response.data;
   }
+
+  Future<void> markConversationRead(int userId) async {
+    await _apiClient.post<Object?>(
+      '/messages/conversations/$userId/read',
+      parseData: (_) => null,
+    );
+  }
 }

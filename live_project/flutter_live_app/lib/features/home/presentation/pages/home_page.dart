@@ -47,12 +47,12 @@ class _HomePageState extends ConsumerState<HomePage> {
                     ),
                     const Spacer(),
                     IconButton(
-                      onPressed: () => _snack(context, '搜索功能即将开放'),
+                      onPressed: () => context.push('/search'),
                       icon: const Icon(Icons.search),
                       tooltip: '搜索',
                     ),
                     IconButton(
-                      onPressed: () => context.go('/message'),
+                      onPressed: () => context.push('/notifications'),
                       icon: const Icon(Icons.notifications_none),
                       tooltip: '通知',
                     ),
@@ -151,10 +151,6 @@ class _HomePageState extends ConsumerState<HomePage> {
       ),
     );
   }
-
-  void _snack(BuildContext context, String message) =>
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
 }
 
 class _LiveBanner extends StatelessWidget {

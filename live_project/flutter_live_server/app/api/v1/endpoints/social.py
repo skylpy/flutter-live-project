@@ -8,16 +8,28 @@ from app.models.user import User
 from app.schemas.common import ApiResponse, success
 from app.schemas.social import (
     FeedPostResponse,
+    FollowedUserResponse,
     MessageConversationResponse,
     MessageSendRequest,
+    NotificationResponse,
     ProfileResponse,
+    SearchResponse,
     ToggleInteractionResponse,
     UpdateProfileRequest,
 )
 from app.services.live_room_service import LiveRoomService
 from app.services.social_service import SocialService
 
-router = APIRouter(tags=["phase2"])
+router = APIRouter(tags=["phase4"])
+
+
+@router.get("/search", response_model=ApiResponse[SearchResponse])
+def search(
+    q: str = Query(..., min_length=1, max_length=100),
+    service: SocialService = Depends(get_social_service),
+) -> ApiResponse[SearchResponse]:
+    """搜索用户、正在直播的房间和动态正文。"""
+    return success(service.search(q.strip()))
 
 
 @router.get("/feed/posts", response_model=ApiResponse[list[FeedPostResponse]])
@@ -76,6 +88,41 @@ def send_message(
 ) -> ApiResponse[dict]:
     """发送一条私信；具体会话列表通过 GET 重新读取，避免本地状态漂移。"""
     return success(service.send_message(payload, user), message="消息已发送")
+
+
+@router.post("/messages/conversations/{other_user_id}/read", response_model=ApiResponse[None])
+def mark_conversation_read(
+    other_user_id: int = Path(..., ge=1),
+    user: User = Depends(get_current_user),
+    service: SocialService = Depends(get_social_service),
+) -> ApiResponse[None]:
+    service.mark_conversation_read(user, other_user_id)
+    return success(None, message="会话已读")
+
+
+@router.get("/notifications", response_model=ApiResponse[list[NotificationResponse]])
+def list_notifications(
+    user: User = Depends(get_current_user),
+    service: SocialService = Depends(get_social_service),
+) -> ApiResponse[list[NotificationResponse]]:
+    return success(service.notifications(user))
+
+
+@router.post("/notifications/read", response_model=ApiResponse[None])
+def mark_notifications_read(
+    user: User = Depends(get_current_user),
+    service: SocialService = Depends(get_social_service),
+) -> ApiResponse[None]:
+    service.mark_notifications_read(user)
+    return success(None, message="通知已读")
+
+
+@router.get("/following", response_model=ApiResponse[list[FollowedUserResponse]])
+def list_following(
+    user: User = Depends(get_current_user),
+    service: SocialService = Depends(get_social_service),
+) -> ApiResponse[list[FollowedUserResponse]]:
+    return success(service.following(user))
 
 
 @router.post("/live/rooms/{room_id}/follow", response_model=ApiResponse[ToggleInteractionResponse])

@@ -77,7 +77,11 @@ class ProfilePage extends ConsumerWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _Stat('${profile?.followingCount ?? 0}', '关注'),
+                _Stat(
+                  '${profile?.followingCount ?? 0}',
+                  '关注',
+                  onTap: () => context.push('/following'),
+                ),
                 _Stat('${profile?.followerCount ?? 0}', '粉丝'),
                 _Stat('${profile?.likedCount ?? 0}', '获赞'),
               ],
@@ -170,25 +174,33 @@ class ProfilePage extends ConsumerWidget {
 }
 
 class _Stat extends StatelessWidget {
-  const _Stat(this.value, this.label);
+  const _Stat(this.value, this.label, {this.onTap});
   final String value;
   final String label;
+  final VoidCallback? onTap;
   @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      Text(
-        value,
-        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(12),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            label,
+            style: TextStyle(
+              color: AppTheme.tokens(context).textSecondary,
+              fontSize: 12,
+            ),
+          ),
+        ],
       ),
-      const SizedBox(height: 3),
-      Text(
-        label,
-        style: TextStyle(
-          color: AppTheme.tokens(context).textSecondary,
-          fontSize: 12,
-        ),
-      ),
-    ],
+    ),
   );
 }
 

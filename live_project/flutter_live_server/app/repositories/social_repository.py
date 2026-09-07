@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import desc, func, or_, select
+from sqlalchemy import desc, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.models.live_room import LiveRoom
@@ -15,6 +15,7 @@ from app.models.social import (
     LiveRoomLike,
 )
 from app.models.user import User
+from app.schemas.social import format_time_label
 
 
 class SocialRepository:
@@ -124,6 +125,155 @@ class SocialRepository:
             }
             for other_id, message in latest.items()
         ]
+
+    def mark_conversation_read(self, user_id: int, other_user_id: int) -> None:
+        """把对方发给当前用户的消息真正标记为已读。"""
+        self.db.execute(
+            update(DirectMessage)
+            .where(
+                DirectMessage.sender_id == other_user_id,
+                DirectMessage.recipient_id == user_id,
+                DirectMessage.is_read.is_(False),
+            )
+            .values(is_read=True)
+        )
+        self.db.commit()
+
+    def list_notifications(self, user_id: int) -> list[dict[str, str | bool]]:
+        """从真实互动数据聚合通知，避免为 MVP 引入重复的通知写入链路。"""
+        messages = self.db.execute(
+            select(DirectMessage, User)
+            .join(User, User.id == DirectMessage.sender_id)
+            .where(DirectMessage.recipient_id == user_id)
+            .order_by(desc(DirectMessage.created_at))
+            .limit(30)
+        ).all()
+        follows = self.db.execute(
+            select(Follow, User)
+            .join(User, User.id == Follow.follower_id)
+            .where(Follow.followed_id == user_id)
+            .order_by(desc(Follow.created_at))
+            .limit(30)
+        ).all()
+        items: list[tuple[datetime, dict[str, str | bool]]] = []
+        items.extend(
+            (
+                message.created_at,
+                {
+                    "id": f"message:{message.id}",
+                    "type": "互动消息",
+                    "title": sender.display_name,
+                    "body": message.body,
+                    "time_label": format_time_label(message.created_at),
+                    "unread": not message.is_read,
+                },
+            )
+            for message, sender in messages
+        )
+        items.extend(
+            (
+                follow.created_at,
+                {
+                    "id": f"follow:{follow.id}",
+                    "type": "新关注",
+                    "title": follower.display_name,
+                    "body": "关注了你",
+                    "time_label": format_time_label(follow.created_at),
+                    # Follow 模型当前没有已读字段，先作为历史通知展示；
+                    # 可持久化的未读状态由 DirectMessage 提供。
+                    "unread": False,
+                },
+            )
+            for follow, follower in follows
+        )
+        items.sort(key=lambda item: item[0], reverse=True)
+        return [item for _, item in items[:50]]
+
+    def mark_notifications_read(self, user_id: int) -> None:
+        self.db.execute(
+            update(DirectMessage)
+            .where(
+                DirectMessage.recipient_id == user_id,
+                DirectMessage.is_read.is_(False),
+            )
+            .values(is_read=True)
+        )
+        self.db.commit()
+
+    def list_following(self, user_id: int) -> list[dict[str, int | str]]:
+        rows = self.db.execute(
+            select(User)
+            .join(Follow, Follow.followed_id == User.id)
+            .where(Follow.follower_id == user_id)
+            .order_by(desc(Follow.created_at))
+        ).scalars().all()
+        return [
+            {
+                "id": user.id,
+                "username": user.username,
+                "display_name": user.display_name,
+            }
+            for user in rows
+        ]
+
+    def search(self, query: str) -> dict[str, list[dict[str, int | str]]]:
+        """跨用户、直播间和动态做一次受限搜索，供搜索页统一展示。"""
+        keyword = f"%{query.strip()}%"
+        users = self.db.scalars(
+            select(User)
+            .where(
+                User.is_active.is_(True),
+                or_(User.username.ilike(keyword), User.display_name.ilike(keyword)),
+            )
+            .order_by(User.display_name)
+            .limit(20)
+        ).all()
+        rooms = self.db.scalars(
+            select(LiveRoom)
+            .where(
+                LiveRoom.status == "living",
+                or_(LiveRoom.title.ilike(keyword), LiveRoom.anchor_name.ilike(keyword)),
+            )
+            .order_by(desc(LiveRoom.created_at))
+            .limit(20)
+        ).all()
+        posts = self.db.execute(
+            select(FeedPost, User)
+            .join(User, User.id == FeedPost.author_id)
+            .where(or_(FeedPost.body.ilike(keyword), User.display_name.ilike(keyword)))
+            .order_by(desc(FeedPost.created_at))
+            .limit(20)
+        ).all()
+        return {
+            "users": [
+                {
+                    "id": user.id,
+                    "username": user.username,
+                    "display_name": user.display_name,
+                }
+                for user in users
+            ],
+            "rooms": [
+                {
+                    "id": room.id,
+                    "title": room.title,
+                    "anchor_name": room.anchor_name,
+                    "online_count": room.online_count,
+                    "status": room.status,
+                    "category": room.category,
+                }
+                for room in rooms
+            ],
+            "posts": [
+                {
+                    "id": post.id,
+                    "author": author.display_name,
+                    "body": post.body,
+                    "time_label": format_time_label(post.created_at),
+                }
+                for post, author in posts
+            ],
+        }
 
     def send_message(self, sender_id: int, recipient_id: int, body: str) -> DirectMessage:
         message = DirectMessage(

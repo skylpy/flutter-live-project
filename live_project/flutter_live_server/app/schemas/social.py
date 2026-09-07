@@ -39,6 +39,53 @@ class MessageConversationResponse(BaseModel):
     unread: int
 
 
+class NotificationResponse(BaseModel):
+    """消息中心顶部通知流的统一条目。"""
+
+    id: str
+    type: str
+    title: str
+    body: str
+    time_label: str = Field(serialization_alias="timeLabel")
+    unread: bool
+
+
+class FollowedUserResponse(BaseModel):
+    """当前用户关注的用户；用于关注列表和资料跳转。"""
+
+    id: int
+    username: str
+    display_name: str = Field(serialization_alias="displayName")
+
+
+class SearchUserResponse(BaseModel):
+    id: int
+    username: str
+    display_name: str = Field(serialization_alias="displayName")
+
+
+class SearchRoomResponse(BaseModel):
+    id: int
+    title: str
+    anchor_name: str = Field(serialization_alias="anchorName")
+    online_count: int = Field(serialization_alias="onlineCount")
+    status: str
+    category: str
+
+
+class SearchPostResponse(BaseModel):
+    id: int
+    author: str
+    body: str
+    time_label: str = Field(serialization_alias="timeLabel")
+
+
+class SearchResponse(BaseModel):
+    users: list[SearchUserResponse]
+    rooms: list[SearchRoomResponse]
+    posts: list[SearchPostResponse]
+
+
 class ProfileResponse(BaseModel):
     """个人中心需要的真实统计和资料。"""
 

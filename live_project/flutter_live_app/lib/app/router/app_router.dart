@@ -9,6 +9,9 @@ import '../../features/home/presentation/pages/home_page.dart';
 import '../../features/live/data/models/live_room.dart';
 import '../../features/live/presentation/pages/live_room_page.dart';
 import '../../features/message/presentation/pages/message_page.dart';
+import '../../features/notification/presentation/pages/notification_page.dart';
+import '../../features/search/presentation/pages/search_page.dart';
+import '../../features/following/presentation/pages/following_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
 import '../../features/profile/presentation/pages/settings_page.dart';
 import '../../shared/widgets/main_scaffold.dart';
@@ -98,6 +101,21 @@ final appRouter = GoRouter(
       path: '/settings',
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => const SettingsPage(),
+    ),
+    GoRoute(
+      path: '/search',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const SearchPage(),
+    ),
+    GoRoute(
+      path: '/notifications',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const NotificationPage(),
+    ),
+    GoRoute(
+      path: '/following',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const FollowingPage(),
     ),
     GoRoute(
       path: '/login',

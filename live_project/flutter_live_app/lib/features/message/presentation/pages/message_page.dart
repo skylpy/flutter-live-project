@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../data/models/message_conversation.dart';
@@ -46,6 +47,7 @@ class MessagePage extends ConsumerWidget {
                       icon: Icons.notifications,
                       title: '系统通知',
                       color: const Color(0xFF5B8DEF),
+                      onTap: () => context.push('/notifications'),
                     ),
                     _Entry(
                       icon: Icons.headset_mic,
@@ -83,23 +85,36 @@ class MessagePage extends ConsumerWidget {
 }
 
 class _Entry extends StatelessWidget {
-  const _Entry({required this.icon, required this.title, required this.color});
+  const _Entry({
+    required this.icon,
+    required this.title,
+    required this.color,
+    this.onTap,
+  });
   final IconData icon;
   final String title;
   final Color color;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) => Expanded(
-    child: Column(
-      children: [
-        CircleAvatar(
-          radius: 27,
-          backgroundColor: color.withValues(alpha: 0.18),
-          child: Icon(icon, color: color),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          children: [
+            CircleAvatar(
+              radius: 27,
+              backgroundColor: color.withValues(alpha: 0.18),
+              child: Icon(icon, color: color),
+            ),
+            const SizedBox(height: 8),
+            Text(title, style: const TextStyle(fontSize: 12)),
+          ],
         ),
-        const SizedBox(height: 8),
-        Text(title, style: const TextStyle(fontSize: 12)),
-      ],
+      ),
     ),
   );
 }
