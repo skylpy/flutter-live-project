@@ -1,6 +1,9 @@
-from datetime import datetime
+from __future__ import annotations
 
-from sqlalchemy import BigInteger, DateTime, Index, String
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -14,11 +17,16 @@ class LiveRoom(Base):
     """
 
     __tablename__ = "live_rooms"
-    __table_args__ = (
-        Index("ix_live_rooms_status_created_at", "status", "created_at"),
-    )
+    __table_args__ = (Index("ix_live_rooms_status_created_at", "status", "created_at"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # 历史房间允许为空，新的房间必须由认证用户创建并由同一用户控制。
+    anchor_user_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     anchor_name: Mapped[str] = mapped_column(String(100), nullable=False)
     anchor_avatar: Mapped[str] = mapped_column(String(500), nullable=False, default="")

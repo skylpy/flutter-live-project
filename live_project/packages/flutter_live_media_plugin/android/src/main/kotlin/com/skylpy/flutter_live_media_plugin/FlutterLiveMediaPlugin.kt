@@ -7,7 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.View
-import android.view.SurfaceView
+import android.view.TextureView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -18,6 +18,8 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.pedro.common.ConnectChecker
+import com.pedro.encoder.input.sources.OrientationForced
+import com.pedro.encoder.input.sources.video.Camera2Source
 import com.pedro.library.rtmp.RtmpStream
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.BinaryMessenger
@@ -28,6 +30,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val PLAYER_VIEW_TYPE = "flutter_live_media_player_view"
@@ -99,7 +102,7 @@ private class AndroidLiveMediaEngine(
 
     // RootEncoder 只负责主播端推流；不要复用 ExoPlayer 的 currentUrl 或 stop()。
     private var pushStream: RtmpStream? = null
-    private var publisherSurface: SurfaceView? = null
+    private var publisherTexture: TextureView? = null
     private var previewRequested = false
 
     init {
@@ -185,9 +188,7 @@ private class AndroidLiveMediaEngine(
         // 这里只负责创建编码器并把画面输出到主播 PlatformView。
         val stream = ensurePushStream() ?: return false
         previewRequested = true
-        if (!stream.isOnPreview) {
-            publisherSurface?.let { stream.startPreview(it) }
-        }
+        startPreviewIfSurfaceReady(stream)
         emit(LiveMediaEventType.PREVIEW_STARTED, "Android 摄像头预览已启动")
         return true
     }
@@ -201,17 +202,47 @@ private class AndroidLiveMediaEngine(
         }
 
         val stream = ensurePushStream() ?: return false
-        if (!stream.isOnPreview) {
-            publisherSurface?.let { stream.startPreview(it) }
-        }
         previewRequested = true
+        // PlatformView 的 SurfaceView 可能还没有完成 surfaceCreated；先记录请求，
+        // 待 SurfaceHolder.Callback 回调后再启动预览，推流连接本身不应因 Surface
+        // 创建时序而失败。
+        startPreviewIfSurfaceReady(stream)
         emit(LiveMediaEventType.PUSH_CONNECTING, "正在连接 RTMP 推流服务器")
         return runCatching {
+            // 部分真机在 startPreview 返回后还需要一个很短的时间完成
+            // MediaCodec 的 CSD/首帧初始化；过早发送 RTMP 视频包会让 SRS
+            // 把 AVC 配置包误判为 Annex-B NALU 并立即断开。这个有界预热不
+            // 影响正常开播时延，却避免把“握手成功但媒体无效”误报为开播成功。
+            delay(500)
             stream.startStream(normalizedUrl)
             true
         }.getOrElse { error ->
             Log.e(LOG_TAG, "RTMP push start failed", error)
             emit(LiveMediaEventType.ERROR, error.message ?: "RTMP 推流启动失败")
+            false
+        }
+    }
+
+    override suspend fun switchCamera(): Boolean {
+        val stream = pushStream
+        if (stream == null) {
+            emit(LiveMediaEventType.ERROR, "摄像头预览尚未启动")
+            return false
+        }
+        return runCatching {
+            // RootEncoder 会在同一个采集会话内切换前后摄像头，保留当前
+            // 编码器、RTMP 连接和 Surface，因此切换时不会结束直播间。
+            val videoSource = stream.videoSource
+            if (videoSource !is Camera2Source) {
+                emit(LiveMediaEventType.ERROR, "当前推流器不支持摄像头切换")
+                return false
+            }
+            videoSource.switchCamera()
+            emit(LiveMediaEventType.PREVIEW_STARTED, "摄像头已切换")
+            true
+        }.getOrElse { error ->
+            Log.e(LOG_TAG, "Switch camera failed", error)
+            emit(LiveMediaEventType.ERROR, error.message ?: "切换摄像头失败")
             false
         }
     }
@@ -282,12 +313,22 @@ private class AndroidLiveMediaEngine(
         return runCatching {
             RtmpStream(context = applicationContext, connectChecker = PushConnectChecker())
                 .also { stream ->
-                    // 720p/30fps/1.2Mbps 是 MVP 的保守默认值，后续再根据设备能力和
-                    // 弱网策略动态调整；prepare* 返回 false 时不能启动推流。
+                    // 720p/30fps/2.5Mbps 用于保证手机端竖屏画面细节；局域网和常规
+                    // Wi-Fi 下比 1.2Mbps 更适合直播，同时仍然保留对中端设备的余量。
+                    // 弱网自适应后续再接入；prepare* 返回 false 时不能启动推流。
                     // SRS 的 HLS 切片会在关键帧处切开。这里使用六参数重载，显式
                     // 设置 2 秒关键帧间隔，让不同 Android 编码器都遵守直播切片
                     // 所需的 GOP 粒度，避免观众端等待很长时间才出现第一帧。
-                    val videoReady = stream.prepareVideo(720, 1280, 1_200_000, 30, 0, 2)
+                    val videoReady = stream.prepareVideo(720, 1280, 2_500_000, 30, 0, 2)
+                    // 编码尺寸是竖屏还不够：RootEncoder 的 GL 渲染也必须使用
+                    // PORTRAIT，否则部分真机会输出 720x1280 的容器尺寸，但把
+                    // 摄像头内容按横屏方向绘制到预览和 RTMP 流里。
+                    val glInterface = stream.getGlInterface()
+                    glInterface.forceOrientation(OrientationForced.PORTRAIT)
+                    // 设备已经锁定竖屏，保留相机原始方向，避免部分真机后置相机
+                    // 再被旋转 90°/270°；竖屏画布和编码宽高仍由 PORTRAIT 模式
+                    // 固定为 720x1280。
+                    glInterface.setCameraOrientation(0)
                     // RootEncoder 的参数顺序是 sampleRate、stereo、bitrate；不能
                     // 按常见的 bitrate、stereo、sampleRate 顺序传递，否则会生成
                     // 64000Hz AAC，部分 Android/Media3 解码器会拒绝这种音频流。
@@ -297,12 +338,19 @@ private class AndroidLiveMediaEngine(
                         throw IllegalStateException("摄像头或麦克风编码器初始化失败")
                     }
                     pushStream = stream
-                    if (previewRequested) publisherSurface?.let(stream::startPreview)
+                    if (previewRequested) startPreviewIfSurfaceReady(stream)
                 }
         }.getOrElse { error ->
             Log.e(LOG_TAG, "Create RTMP stream failed", error)
             emit(LiveMediaEventType.ERROR, error.message ?: "创建 Android 推流器失败")
             null
+        }
+    }
+
+    private fun startPreviewIfSurfaceReady(stream: RtmpStream) {
+        val textureView = publisherTexture ?: return
+        if (textureView.isAvailable && !stream.isOnPreview) {
+            stream.startPreview(textureView)
         }
     }
 
@@ -326,15 +374,18 @@ private class AndroidLiveMediaEngine(
         eventScope.cancel()
     }
 
-    fun attachPublisherSurface(surfaceView: SurfaceView) {
-        publisherSurface = surfaceView
-        if (previewRequested && pushStream?.isOnPreview == false) {
-            pushStream?.startPreview(surfaceView)
+    fun attachPublisherTexture(textureView: TextureView) {
+        publisherTexture = textureView
+        if (
+            previewRequested &&
+            pushStream != null
+        ) {
+            pushStream?.let(::startPreviewIfSurfaceReady)
         }
     }
 
-    fun detachPublisherSurface(surfaceView: SurfaceView) {
-        if (publisherSurface === surfaceView) publisherSurface = null
+    fun detachPublisherTexture(textureView: TextureView) {
+        if (publisherTexture === textureView) publisherTexture = null
     }
 
     /** RootEncoder 的连接回调被转换成跨平台 Pigeon 事件。 */
@@ -389,7 +440,9 @@ private class AndroidLiveMediaPlayerView(
     private val playerView = PlayerView(context).apply {
         this.player = player
         useController = false
-        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+        // 直播间采用沉浸式全屏，按竖屏视频裁切填满容器，避免上下/左右出现
+        // 大块黑边；源视频仍保持 720x1280 的竖屏编码。
+        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
         setShutterBackgroundColor(Color.BLACK)
     }
 
@@ -412,22 +465,51 @@ private class AndroidLiveMediaPublisherViewFactory(
 /**
  * 主播 PlatformView。
  *
- * SurfaceView 只是把摄像头预览画面交给 Flutter；RTMP 连接、编码和重连都由
- * AndroidLiveMediaEngine 控制，所以页面销毁时不会把业务状态藏在 View 里。
+ * TextureView 把摄像头预览画面交给 Flutter。这里不能使用 SurfaceView：全屏
+ * SurfaceView 会盖住 Flutter 的主播控制层；TextureView 仍由 RootEncoder 作为
+ * 预览目标，同时允许 Flutter 的切换/结束按钮叠加在视频上。
  */
 private class AndroidLiveMediaPublisherView(
     context: Context,
     private val engine: AndroidLiveMediaEngine,
 ) : PlatformView {
-    private val surfaceView = SurfaceView(context)
+    private val textureView = TextureView(context)
+    private val textureListener = object : TextureView.SurfaceTextureListener {
+        override fun onSurfaceTextureAvailable(
+            surface: android.graphics.SurfaceTexture,
+            width: Int,
+            height: Int,
+        ) {
+            // TextureView 的 SurfaceTexture 创建晚于 PlatformView；只有此时
+            // 才把预览目标交给 RootEncoder，避免页面重建时使用失效纹理。
+            engine.attachPublisherTexture(textureView)
+        }
 
-    init {
-        engine.attachPublisherSurface(surfaceView)
+        override fun onSurfaceTextureSizeChanged(
+            surface: android.graphics.SurfaceTexture,
+            width: Int,
+            height: Int,
+        ) {
+            engine.attachPublisherTexture(textureView)
+        }
+
+        override fun onSurfaceTextureDestroyed(surface: android.graphics.SurfaceTexture): Boolean {
+            engine.detachPublisherTexture(textureView)
+            return true
+        }
+
+        override fun onSurfaceTextureUpdated(surface: android.graphics.SurfaceTexture) = Unit
     }
 
-    override fun getView(): View = surfaceView
+    init {
+        textureView.surfaceTextureListener = textureListener
+        engine.attachPublisherTexture(textureView)
+    }
+
+    override fun getView(): View = textureView
 
     override fun dispose() {
-        engine.detachPublisherSurface(surfaceView)
+        textureView.surfaceTextureListener = null
+        engine.detachPublisherTexture(textureView)
     }
 }

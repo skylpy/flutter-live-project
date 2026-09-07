@@ -179,6 +179,17 @@ final class FlutterLiveMediaEngine implements LiveEngine {
   }
 
   @override
+  Future<void> switchCamera() async {
+    _ensureUsable();
+    final switched = await _api.switchCamera();
+    if (!switched) {
+      _emit(LiveEngineEventType.error, '切换摄像头失败');
+      return;
+    }
+    _emit(LiveEngineEventType.previewRequested, '摄像头已切换');
+  }
+
+  @override
   Future<void> stopPush() async {
     _ensureUsable();
     final stopped = await _api.stopPush();

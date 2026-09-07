@@ -350,6 +350,7 @@ interface LiveMediaHostApi {
   suspend fun stop(): Boolean
   suspend fun startPreview(): Boolean
   suspend fun startPush(url: String): Boolean
+  suspend fun switchCamera(): Boolean
   suspend fun stopPush(): Boolean
 
   companion object {
@@ -442,6 +443,23 @@ interface LiveMediaHostApi {
             CoroutineScope(Dispatchers.Main).launch {
               val wrapped: List<Any?> = try {
                 listOf(api.startPush(urlArg))
+              } catch (exception: Throwable) {
+                LiveMediaApiPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.switchCamera$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.switchCamera())
               } catch (exception: Throwable) {
                 LiveMediaApiPigeonUtils.wrapError(exception)
               }

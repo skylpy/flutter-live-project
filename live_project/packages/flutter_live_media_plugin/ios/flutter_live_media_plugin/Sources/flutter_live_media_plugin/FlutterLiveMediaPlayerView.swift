@@ -55,7 +55,8 @@ final class FlutterLiveMediaPlayerView: UIView, FlutterPlatformView {
     super.init(frame: frame)
     backgroundColor = .black
     clipsToBounds = true
-    playerLayer.videoGravity = .resizeAspect
+    // 直播间是沉浸式全屏，竖屏画面按比例裁切填满容器，避免黑边。
+    playerLayer.videoGravity = .resizeAspectFill
 
     label.text = "AVPlayer"
     label.textColor = UIColor.white.withAlphaComponent(0.65)

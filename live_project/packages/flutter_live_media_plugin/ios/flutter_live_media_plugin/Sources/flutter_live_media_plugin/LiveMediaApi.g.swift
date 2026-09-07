@@ -340,6 +340,7 @@ protocol LiveMediaHostApi {
   func stop() async throws -> Bool
   func startPreview() async throws -> Bool
   func startPush(url: String) async throws -> Bool
+  func switchCamera() async throws -> Bool
   func stopPush() async throws -> Bool
 }
 
@@ -429,6 +430,21 @@ class LiveMediaHostApiSetup {
       }
     } else {
       startPushChannel.setMessageHandler(nil)
+    }
+    let switchCameraChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.switchCamera\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      switchCameraChannel.setMessageHandler { _, reply in
+        Task { @MainActor in
+          do {
+            let result = try await api.switchCamera()
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      switchCameraChannel.setMessageHandler(nil)
     }
     let stopPushChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.stopPush\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {

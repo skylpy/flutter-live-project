@@ -9,6 +9,7 @@ class _FakeLiveMediaHostApi extends LiveMediaHostApi {
   int stopCalls = 0;
   int startPreviewCalls = 0;
   int startPushCalls = 0;
+  int switchCameraCalls = 0;
   int stopPushCalls = 0;
 
   @override
@@ -38,6 +39,12 @@ class _FakeLiveMediaHostApi extends LiveMediaHostApi {
   @override
   Future<bool> startPush(String url) async {
     startPushCalls++;
+    return true;
+  }
+
+  @override
+  Future<bool> switchCamera() async {
+    switchCameraCalls++;
     return true;
   }
 

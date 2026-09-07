@@ -20,6 +20,9 @@ abstract interface class LiveEngine {
   /// 请求推流，未来用于把摄像头和麦克风推到媒体服务。
   Future<void> startPush(String url);
 
+  /// 在前置和后置摄像头之间切换。主播页只在原生采集已经启动后调用。
+  Future<void> switchCamera();
+
   /// 停止推流。
   Future<void> stopPush();
 

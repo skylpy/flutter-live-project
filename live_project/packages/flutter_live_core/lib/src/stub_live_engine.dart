@@ -62,6 +62,13 @@ final class StubLiveEngine implements LiveEngine {
   }
 
   @override
+  Future<void> switchCamera() async {
+    _ensureUsable();
+    await initialize();
+    _emit(LiveEngineEventType.previewRequested, '已收到切换摄像头请求');
+  }
+
+  @override
   Future<void> stopPush() async {
     _ensureUsable();
     _emit(LiveEngineEventType.pushStopped, '已收到停止推流请求');

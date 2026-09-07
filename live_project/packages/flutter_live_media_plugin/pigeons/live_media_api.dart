@@ -62,6 +62,10 @@ abstract class LiveMediaHostApi {
   @async
   bool startPush(String url);
 
+  // Flutter → 原生：切换主播前后摄像头。
+  @async
+  bool switchCamera();
+
   @async
   bool stopPush();
 }

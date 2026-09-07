@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_live_core/flutter_live_core.dart';
 
@@ -11,6 +12,7 @@ import '../../../../core/network/api_provider.dart';
 import '../../../../core/media/live_engine_provider.dart';
 import '../controllers/live_room_controller.dart';
 import '../controllers/live_list_controller.dart';
+import '../widgets/live_danmaku_list.dart';
 import '../widgets/live_room_player.dart';
 
 /// 全屏直播间页面。
@@ -28,6 +30,8 @@ class LiveRoomPage extends ConsumerWidget {
     final room = ref.watch(liveRoomControllerProvider(roomId));
     return Scaffold(
       backgroundColor: Colors.black,
+      extendBodyBehindAppBar: true,
+      resizeToAvoidBottomInset: false,
       body: room.when(
         loading: () =>
             const Center(child: CircularProgressIndicator(color: Colors.white)),
@@ -58,6 +62,8 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
   bool _following = false;
   bool _liked = false;
   int _likeCount = 0;
+  int _heartBurstSeed = 0;
+  bool _roomEnded = false;
 
   @override
   void initState() {
@@ -67,6 +73,7 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
     _following = widget.room.following;
     _liked = widget.room.liked;
     _likeCount = widget.room.likeCount;
+    _enterFullscreenLiveMode();
     // 监听平台无关的 LiveEngineEvent，页面不直接认识 AVPlayer/ExoPlayer。
     _engine = ref.read(liveEngineProvider);
     _engineSubscription = _engine.events.listen((event) {
@@ -83,7 +90,24 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
     // dispose 阶段不能再通过 ref 查找 Provider；_engine 是 initState 中保存的
     // 同一个实例，既避免 Riverpod 生命周期断言，也保证停止的是当前播放器。
     unawaited(_engine.stop());
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     super.dispose();
+  }
+
+  void _enterFullscreenLiveMode() {
+    // 视频层铺到系统栏下面，顶部和底部控件再根据安全区单独定位，确保
+    // iOS 真机、iOS 模拟器和 Android 都不会在视频上下留下黑色条带。
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarDividerColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        systemNavigationBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+      ),
+    );
   }
 
   Future<void> _prepareEngine() async {
@@ -98,10 +122,28 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
   }
 
   void _appendDanmaku(LiveChatMessage message) {
-    if (!mounted || message.type != 'chat') return;
+    if (!mounted || !_isPublicLiveMessage(message)) return;
     setState(() {
       _danmaku.add(message);
       if (_danmaku.length > 8) _danmaku.removeAt(0);
+    });
+  }
+
+  void _handleRoomEnded(String message) {
+    if (!mounted || _roomEnded) return;
+    _roomEnded = true;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(milliseconds: 1200),
+      ),
+    );
+    Future<void>.delayed(const Duration(milliseconds: 1200), () async {
+      if (!mounted) return;
+      // 结束事件到达时，首页可能仍持有进入直播间前的列表快照。先主动
+      // 拉取一次最新列表，再返回首页，避免已结束房间还显示“直播中”。
+      await ref.read(liveListControllerProvider.notifier).refreshRooms();
+      if (mounted) Navigator.of(context).pop(true);
     });
   }
 
@@ -124,44 +166,197 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
     }
   }
 
+  void _handleLike() {
+    // 直播间点赞按“每次点击一组漂浮心心”反馈，网络请求仍由原来的
+    // toggleLike 负责，动画不等待接口返回，避免弱网时点击没有即时反馈。
+    setState(() => _heartBurstSeed++);
+    unawaited(_toggleLike());
+  }
+
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
+    final safePadding = MediaQuery.paddingOf(context);
+    return Stack(
+      children: [
+        // 直播视频铺满整个页面，标题、弹幕和互动栏全部作为透明叠加层，
+        // 与短视频式直播间一致，不再被 SafeArea 留出上下黑边。
+        const Positioned.fill(child: ColoredBox(color: Colors.black)),
+        Positioned.fill(child: LiveRoomPlayer(status: _engineStatus)),
+        Positioned(
+          top: safePadding.top + 8,
+          left: 16,
+          right: 16,
+          child: _RoomHeader(
+            room: widget.room,
+            following: _following,
+            onFollow: _toggleFollow,
+          ),
+        ),
+        Positioned(
+          left: 16,
+          bottom: safePadding.bottom + 92,
+          child: LiveDanmakuList(messages: _danmaku),
+        ),
+        Positioned(
+          right: 18,
+          bottom: safePadding.bottom + 148,
+          child: IgnorePointer(
+            child: _FloatingHeartOverlay(burstSeed: _heartBurstSeed),
+          ),
+        ),
+        Positioned(
+          left: 16,
+          right: 16,
+          bottom: safePadding.bottom + 12,
+          child: _RoomInputBar(
+            roomId: widget.room.id.toString(),
+            onMessage: _appendDanmaku,
+            onRoomEnded: _handleRoomEnded,
+            liked: _liked,
+            likeCount: _likeCount,
+            onLike: _handleLike,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 直播间常见的连续点赞反馈：每次点心形按钮生成一小组向上漂浮、
+/// 横向散开的心心，结束后自动移除，不会一直占住画面。
+class _FloatingHeartOverlay extends StatefulWidget {
+  const _FloatingHeartOverlay({required this.burstSeed});
+
+  final int burstSeed;
+
+  @override
+  State<_FloatingHeartOverlay> createState() => _FloatingHeartOverlayState();
+}
+
+class _FloatingHeartOverlayState extends State<_FloatingHeartOverlay> {
+  final List<_FloatingHeart> _hearts = <_FloatingHeart>[];
+  int _nextId = 0;
+
+  @override
+  void didUpdateWidget(covariant _FloatingHeartOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.burstSeed != oldWidget.burstSeed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _spawnBurst();
+      });
+    }
+  }
+
+  void _spawnBurst() {
+    final burst = <_FloatingHeart>[
+      _FloatingHeart(
+        id: _nextId++,
+        horizontalOffset: -22,
+        drift: -18,
+        size: 30,
+        duration: const Duration(milliseconds: 1450),
+        color: const Color(0xffff5ca8),
+        rotation: -0.12,
+      ),
+      _FloatingHeart(
+        id: _nextId++,
+        horizontalOffset: 4,
+        drift: 9,
+        size: 36,
+        duration: const Duration(milliseconds: 1650),
+        color: const Color(0xffff3d81),
+        rotation: 0.08,
+      ),
+      _FloatingHeart(
+        id: _nextId++,
+        horizontalOffset: 26,
+        drift: 20,
+        size: 25,
+        duration: const Duration(milliseconds: 1300),
+        color: const Color(0xffff8ac3),
+        rotation: 0.16,
+      ),
+    ];
+    setState(() => _hearts.addAll(burst));
+  }
+
+  void _removeHeart(int id) {
+    if (!mounted) return;
+    setState(() => _hearts.removeWhere((heart) => heart.id == id));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 92,
+      height: 260,
       child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.bottomCenter,
         children: [
-          Positioned.fill(child: LiveRoomPlayer(status: _engineStatus)),
-          Positioned(
-            top: 12,
-            left: 16,
-            right: 16,
-            child: _RoomHeader(
-              room: widget.room,
-              following: _following,
-              onFollow: _toggleFollow,
+          for (final heart in _hearts)
+            Positioned(
+              left: 46 + heart.horizontalOffset,
+              bottom: 0,
+              child: TweenAnimationBuilder<double>(
+                key: ValueKey<int>(heart.id),
+                duration: heart.duration,
+                curve: Curves.easeOutCubic,
+                tween: Tween<double>(begin: 0, end: 1),
+                onEnd: () => _removeHeart(heart.id),
+                builder: (context, progress, child) {
+                  final opacity = (1 - progress).clamp(0.0, 1.0);
+                  return Opacity(
+                    opacity: opacity,
+                    child: Transform.translate(
+                      offset: Offset(heart.drift * progress, -220 * progress),
+                      child: Transform.rotate(
+                        angle: heart.rotation * (1 - progress),
+                        child: Transform.scale(
+                          scale: 0.72 + (progress * 0.45),
+                          child: child,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                child: Icon(
+                  Icons.favorite_rounded,
+                  size: heart.size,
+                  color: heart.color,
+                ),
+              ),
             ),
-          ),
-          Positioned(
-            left: 16,
-            bottom: 102,
-            child: _DanmakuList(messages: _danmaku),
-          ),
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 18,
-            child: _RoomInputBar(
-              roomId: widget.room.id.toString(),
-              onMessage: _appendDanmaku,
-              liked: _liked,
-              likeCount: _likeCount,
-              onLike: _toggleLike,
-            ),
-          ),
         ],
       ),
     );
   }
 }
+
+class _FloatingHeart {
+  const _FloatingHeart({
+    required this.id,
+    required this.horizontalOffset,
+    required this.drift,
+    required this.size,
+    required this.duration,
+    required this.color,
+    required this.rotation,
+  });
+
+  final int id;
+  final double horizontalOffset;
+  final double drift;
+  final double size;
+  final Duration duration;
+  final Color color;
+  final double rotation;
+}
+
+bool _isPublicLiveMessage(LiveChatMessage message) =>
+    message.type == 'chat' ||
+    message.type == 'presence' ||
+    message.type == 'system';
 
 class _RoomHeader extends StatelessWidget {
   const _RoomHeader({
@@ -206,6 +401,12 @@ class _RoomHeader extends StatelessWidget {
         ),
         OutlinedButton(
           onPressed: onFollow,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white,
+            side: const BorderSide(color: Colors.white70),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            minimumSize: const Size(0, 36),
+          ),
           child: Text(following ? '已关注' : '关注'),
         ),
         const SizedBox(width: 8),
@@ -220,54 +421,11 @@ class _RoomHeader extends StatelessWidget {
   }
 }
 
-class _DanmakuList extends StatelessWidget {
-  const _DanmakuList({required this.messages});
-
-  final List<LiveChatMessage> messages;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final item in messages)
-          _DanmakuLine(name: item.userName, message: item.message),
-      ],
-    );
-  }
-}
-
-class _DanmakuLine extends StatelessWidget {
-  const _DanmakuLine({required this.name, required this.message});
-
-  final String name;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: DecoratedBox(
-        decoration: const BoxDecoration(
-          color: Colors.black54,
-          borderRadius: BorderRadius.all(Radius.circular(14)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          child: Text(
-            '$name：$message',
-            style: const TextStyle(color: Colors.white, fontSize: 13),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _RoomInputBar extends ConsumerStatefulWidget {
   const _RoomInputBar({
     required this.roomId,
     required this.onMessage,
+    required this.onRoomEnded,
     required this.liked,
     required this.likeCount,
     required this.onLike,
@@ -275,6 +433,7 @@ class _RoomInputBar extends ConsumerStatefulWidget {
 
   final String roomId;
   final ValueChanged<LiveChatMessage> onMessage;
+  final ValueChanged<String> onRoomEnded;
   final bool liked;
   final int likeCount;
   final VoidCallback onLike;
@@ -312,14 +471,17 @@ class _RoomInputBarState extends ConsumerState<_RoomInputBar> {
       setState(() => _status = '登录后可发送弹幕');
       return;
     }
+    _subscription = _chatClient.messages.listen((message) {
+      widget.onMessage(message);
+      if (message.type == 'system' && message.event == 'room_ended') {
+        widget.onRoomEnded(message.message);
+      }
+      if (mounted && message.type == 'error') {
+        setState(() => _status = message.message);
+      }
+    });
     try {
       await _chatClient.connect(widget.roomId, token);
-      _subscription = _chatClient.messages.listen((message) {
-        widget.onMessage(message);
-        if (mounted && message.type == 'error') {
-          setState(() => _status = message.message);
-        }
-      });
       if (mounted) setState(() => _connected = true);
     } catch (_) {
       if (mounted) setState(() => _status = '弹幕连接失败');
@@ -371,6 +533,24 @@ class _RoomInputBarState extends ConsumerState<_RoomInputBar> {
               ),
             ),
             IconButton(
+              onPressed: () => _showAction('礼物功能即将开放'),
+              color: Colors.white,
+              icon: const Icon(Icons.card_giftcard),
+              tooltip: '送礼物',
+            ),
+            IconButton(
+              onPressed: () => _showAction('直播间链接已准备分享'),
+              color: Colors.white,
+              icon: const Icon(Icons.ios_share_outlined),
+              tooltip: '分享直播间',
+            ),
+            IconButton(
+              onPressed: () => _showAction('更多功能即将开放'),
+              color: Colors.white,
+              icon: const Icon(Icons.more_horiz),
+              tooltip: '更多',
+            ),
+            IconButton(
               onPressed: widget.onLike,
               color: widget.liked ? Colors.pinkAccent : Colors.white,
               icon: const Icon(Icons.favorite),
@@ -386,6 +566,18 @@ class _RoomInputBarState extends ConsumerState<_RoomInputBar> {
         ),
       ],
     );
+  }
+
+  void _showAction(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(milliseconds: 900),
+        ),
+      );
   }
 }
 

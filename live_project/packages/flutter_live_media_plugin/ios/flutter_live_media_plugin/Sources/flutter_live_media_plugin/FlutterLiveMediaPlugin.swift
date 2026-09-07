@@ -51,6 +51,7 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
   // 开播页管理采集推流，也可以在直播间管理 HLS 播放，互不调用 stop()。
   private var rtmpConnection: RTMPConnection?
   private var rtmpStream: RTMPStream?
+  private var usesFrontCamera = true
   private var pushStreamName: String?
   private var pushConnectionURL: String?
 
@@ -174,6 +175,37 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
     }
     emit(type: .pushStopped, message: "iOS 推流已停止")
     return true
+  }
+
+  func switchCamera() async throws -> Bool {
+    await MainActor.run {
+      guard let stream = rtmpStream else {
+        emit(type: .error, message: "摄像头预览尚未启动")
+        return false
+      }
+      let nextPosition: AVCaptureDevice.Position = usesFrontCamera ? .back : .front
+      guard let camera = AVCaptureDevice.default(
+        .builtInWideAngleCamera,
+        for: .video,
+        position: nextPosition
+      ) else {
+        emit(type: .error, message: "没有可用的另一颗摄像头")
+        return false
+      }
+
+      var attachError: Error?
+      stream.attachCamera(camera) { error in
+        attachError = error
+      }
+      if let attachError {
+        emit(type: .error, message: "切换摄像头失败：\(attachError.localizedDescription)")
+        return false
+      }
+      usesFrontCamera.toggle()
+      publisherView?.setStream(stream)
+      emit(type: .previewStarted, message: usesFrontCamera ? "已切换前置摄像头" : "已切换后置摄像头")
+      return true
+    }
   }
 
   private func beginPlayback(url: URL) -> Bool {
@@ -324,16 +356,17 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
       emit(type: .error, message: "没有可用的摄像头或麦克风")
       return false
     }
+    usesFrontCamera = true
 
-    // 与 Android RootEncoder 保持一致：竖屏 720×1280、30fps、64kbps 音频，
-    // 关键帧间隔 2 秒。统一编码参数后，SRS 生成 HLS 时两端的延迟和切片行为
-    // 更容易对齐，也方便后续做跨平台弱网对比。
+    // 与 Android RootEncoder 保持一致：竖屏 720×1280、30fps、2.5Mbps 视频、
+    // 64kbps 音频，关键帧间隔 2 秒。提高视频码率，避免观看端画面出现明显
+    // 的块状模糊；统一编码参数后，SRS 生成 HLS 时两端也更容易对齐。
     stream.frameRate = 30
     stream.audioSettings = AudioCodecSettings(bitRate: 64 * 1000)
     stream.videoSettings = VideoCodecSettings(
       videoSize: .init(width: 720, height: 1280),
       profileLevel: kVTProfileLevel_H264_Baseline_3_1 as String,
-      bitRate: 1_200 * 1000,
+      bitRate: 2_500 * 1000,
       maxKeyFrameIntervalDuration: 2,
       scalingMode: .trim,
       bitRateMode: .average,

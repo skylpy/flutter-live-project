@@ -8,8 +8,12 @@ import 'package:flutter_live_media_plugin/flutter_live_media_plugin.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/media/live_engine_provider.dart';
+import '../../../../core/network/api_provider.dart';
+import '../../../live/data/datasources/live_chat_client.dart';
+import '../../../live/data/models/live_chat_message.dart';
 import '../../../live/data/models/live_room.dart';
 import '../../../live/presentation/controllers/live_list_controller.dart';
+import '../../../live/presentation/widgets/live_danmaku_list.dart';
 
 /// 竖屏主播推流页。
 ///
@@ -33,23 +37,54 @@ class LiveBroadcastPage extends ConsumerStatefulWidget {
 
 class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
   late final LiveEngine _engine;
+  late final LiveChatClient _chatClient;
   StreamSubscription<LiveEngineEvent>? _engineSubscription;
+  StreamSubscription<LiveChatMessage>? _chatSubscription;
+  final List<LiveChatMessage> _danmaku = [];
 
   String _status = '正在准备摄像头…';
-  bool _isStarting = true;
+  int _onlineCount = 0;
   bool _isLiving = false;
   bool _isStopping = false;
+  bool _failureCleanupStarted = false;
+  bool _isSwitchingCamera = false;
 
   @override
   void initState() {
     super.initState();
+    _onlineCount = widget.room.onlineCount;
+    _enterFullscreenLiveMode();
     _engine = ref.read(liveEngineProvider);
+    _chatClient = LiveChatClient();
     _engineSubscription = _engine.events.listen(_onEngineEvent);
+    unawaited(_connectChat());
 
-    // 主播直播通常使用 9:16 画布。只在主播页锁定竖屏，离开后恢复系统默认方向，
-    // 避免观众播放页和其他 Tab 被错误限制为竖屏。这里等待系统完成方向切换后
-    // 才启动摄像头，避免真机仍处于横屏时先创建出横向的预览 Surface。
+    // Android Activity 在 Manifest 中固定为竖屏，这里再做一次运行时锁定，
+    // 等待系统完成方向切换后才启动摄像头，避免真机仍处于横屏时先创建出
+    // 横向的预览 Surface。
     unawaited(_lockPortraitAndStart());
+  }
+
+  Future<void> _connectChat() async {
+    final token = await ref.read(tokenStorageProvider).readToken();
+    if (!mounted || token == null || token.isEmpty) return;
+    _chatSubscription = _chatClient.messages.listen((message) {
+      if (!mounted) return;
+      setState(() {
+        if (message.onlineCount != null) {
+          _onlineCount = message.onlineCount!;
+        }
+        if (_isPublicLiveMessage(message)) {
+          _danmaku.add(message);
+          if (_danmaku.length > 8) _danmaku.removeAt(0);
+        }
+      });
+    });
+    try {
+      await _chatClient.connect(widget.room.id.toString(), token);
+    } catch (_) {
+      // 主播仍可继续推流；弹幕连接失败不应影响视频链路。
+    }
   }
 
   Future<void> _lockPortraitAndStart() async {
@@ -62,9 +97,27 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
     });
   }
 
+  void _enterFullscreenLiveMode() {
+    // 让原生视频视图延伸到状态栏和底部手势区域，Flutter 控件再使用
+    // MediaQuery.paddingOf(context) 主动避让，避免视频上下出现系统栏黑边。
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarDividerColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        systemNavigationBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _engineSubscription?.cancel();
+    _chatSubscription?.cancel();
+    unawaited(_chatClient.dispose());
     // 页面被系统返回手势销毁时兜底停止原生推流。正常点击结束按钮时，
     // _stopBroadcast 已经先完成后端状态同步，这里再次 stopPush 也是幂等的。
     unawaited(_engine.stopPush());
@@ -74,6 +127,7 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
     if (defaultTargetPlatform != TargetPlatform.android) {
       unawaited(SystemChrome.setPreferredOrientations(const []));
     }
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     super.dispose();
   }
 
@@ -81,12 +135,13 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
     if (!mounted) return;
     setState(() {
       _status = event.message ?? '推流状态已更新';
-      if (event.type == LiveEngineEventType.pushStarted) {
-        _isStarting = false;
-      }
     });
     if (event.type == LiveEngineEventType.pushStarted) {
       unawaited(_markRoomLiving());
+    } else if (event.type == LiveEngineEventType.error) {
+      // 推流建立后仍可能因为编码器、网络或媒体服务断开而收到错误；不能
+      // 只处理“启动阶段”的错误，否则房间会永久停在 living。
+      unawaited(_handleMediaFailure(event.message ?? '原生媒体引擎异常'));
     }
   }
 
@@ -96,9 +151,9 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
       await _engine.startPreview();
       await _engine.startPush(widget.room.pushUrl);
     } catch (error) {
+      await _cleanupRoom();
       if (!mounted) return;
       setState(() {
-        _isStarting = false;
         _status = '推流启动失败：$error';
       });
     }
@@ -130,7 +185,51 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
       }
     }
     if (mounted) {
-      setState(() => _status = '推流已连接，但房间状态同步失败：$lastError');
+      await _stopPushSafely();
+      await _cleanupRoom();
+      if (!mounted) return;
+      setState(() {
+        _status = '推流状态确认失败，房间已清理：$lastError';
+      });
+    }
+  }
+
+  Future<void> _handleMediaFailure(String message) async {
+    if (_isStopping || _failureCleanupStarted) return;
+    _failureCleanupStarted = true;
+    if (mounted) {
+      setState(() {
+        _isLiving = false;
+        _isStopping = true;
+        _status = '$message，正在清理直播间…';
+      });
+    }
+    await _stopPushSafely();
+    await _cleanupRoom();
+    if (!mounted) return;
+    setState(() {
+      _isStopping = false;
+      _status = '$message，房间已结束';
+    });
+  }
+
+  Future<void> _cleanupRoom() async {
+    try {
+      await ref
+          .read(liveRepositoryProvider)
+          .stopLiveRoom(widget.room.id.toString())
+          .timeout(const Duration(seconds: 5));
+      ref.invalidate(liveListControllerProvider);
+    } catch (_) {
+      // 后端不可达时仍保持页面可关闭；服务端定时清理会处理孤儿 preparing 房间。
+    }
+  }
+
+  Future<void> _stopPushSafely() async {
+    try {
+      await _engine.stopPush().timeout(const Duration(seconds: 5));
+    } catch (_) {
+      // 原生引擎已断开时 stopPush 可能无法及时返回，不能阻塞房间状态清理。
     }
   }
 
@@ -141,14 +240,15 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
       _status = '正在结束直播…';
     });
 
-    await _engine.stopPush();
+    await _stopPushSafely();
     try {
       await ref
           .read(liveRepositoryProvider)
-          .stopLiveRoom(widget.room.id.toString());
-      ref.invalidate(liveListControllerProvider);
+          .stopLiveRoom(widget.room.id.toString())
+          .timeout(const Duration(seconds: 5));
+      await ref.read(liveListControllerProvider.notifier).refreshRooms();
       if (!mounted) return;
-      Navigator.of(context).pop();
+      Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -162,6 +262,21 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
     await _stopBroadcast();
   }
 
+  Future<void> _switchCamera() async {
+    if (_isSwitchingCamera || _isStopping) return;
+    setState(() => _isSwitchingCamera = true);
+    try {
+      await _engine.switchCamera();
+      if (!mounted) return;
+      setState(() => _status = '摄像头已切换');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _status = '切换摄像头失败：$error');
+    } finally {
+      if (mounted) setState(() => _isSwitchingCamera = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -171,56 +286,56 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
       },
       child: Scaffold(
         backgroundColor: Colors.black,
-        body: SafeArea(
-          child: Stack(
-            children: [
-              Center(
-                child: AspectRatio(
-                  aspectRatio: 9 / 16,
-                  child: const FlutterLiveMediaPublisherView(),
-                ),
+        extendBodyBehindAppBar: true,
+        resizeToAvoidBottomInset: false,
+        body: Stack(
+          children: [
+            // 摄像头预览和推流画布铺满屏幕，编码仍固定为 720x1280 竖屏；
+            // 原生视图由 Android/iOS 自己按容器裁切，避免页面出现横向留白。
+            const Positioned.fill(child: FlutterLiveMediaPublisherView()),
+            Positioned(
+              top: MediaQuery.paddingOf(context).top + 8,
+              left: 16,
+              right: 16,
+              child: _BroadcastHeader(
+                room: widget.room,
+                status: _status,
+                onlineCount: _onlineCount,
+                onSwitchCamera: _isStopping ? null : _switchCamera,
+                onClose: _isStopping ? null : _stopBroadcast,
               ),
-              Positioned(
-                top: 12,
-                left: 16,
-                right: 16,
-                child: _BroadcastHeader(
-                  room: widget.room,
-                  status: _status,
-                  onClose: _isStopping ? null : _stopBroadcast,
-                ),
-              ),
-              Positioned(
-                left: 16,
-                right: 16,
-                bottom: 24,
-                child: FilledButton.icon(
-                  onPressed: _isStarting || _isStopping ? null : _stopBroadcast,
-                  icon: const Icon(Icons.stop),
-                  label: Text(_isStopping ? '正在结束…' : '结束直播'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.redAccent,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: MediaQuery.paddingOf(context).bottom + 28,
+              child: IgnorePointer(child: LiveDanmakuList(messages: _danmaku)),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
+bool _isPublicLiveMessage(LiveChatMessage message) =>
+    message.type == 'chat' ||
+    message.type == 'presence' ||
+    message.type == 'system';
+
 class _BroadcastHeader extends StatelessWidget {
   const _BroadcastHeader({
     required this.room,
     required this.status,
+    required this.onlineCount,
+    required this.onSwitchCamera,
     required this.onClose,
   });
 
   final LiveRoom room;
   final String status;
+  final int onlineCount;
+  final VoidCallback? onSwitchCamera;
   final VoidCallback? onClose;
 
   @override
@@ -249,11 +364,17 @@ class _BroadcastHeader extends StatelessWidget {
                 ),
               ),
               Text(
-                '$status · ${room.anchorName}',
+                '$status · $onlineCount 人在线',
                 style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
             ],
           ),
+        ),
+        IconButton(
+          onPressed: onSwitchCamera,
+          color: Colors.white,
+          icon: const Icon(Icons.flip_camera_ios_outlined),
+          tooltip: '切换前后摄像头',
         ),
         IconButton(
           onPressed: onClose,

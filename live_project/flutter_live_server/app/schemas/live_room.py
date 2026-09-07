@@ -6,8 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class CreateLiveRoomRequest(BaseModel):
     """主播点击“开始直播”前提交的房间信息。
 
-    这一阶段先不强制登录，便于在两台真机上快速验证推流链路；正式环境应在
-    endpoint 上增加当前用户依赖，并用登录用户覆盖 anchor_name。
+    开播接口要求登录；anchor_name 仍保留用于兼容旧客户端，但服务端会用当前
+    登录用户的 display_name 覆盖主播身份，不能由客户端伪造。
     """
 
     model_config = ConfigDict(populate_by_name=True)
