@@ -62,6 +62,7 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
   bool _following = false;
   bool _liked = false;
   int _likeCount = 0;
+  int _onlineCount = 0;
   int _heartBurstSeed = 0;
   bool _roomEnded = false;
 
@@ -73,6 +74,7 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
     _following = widget.room.following;
     _liked = widget.room.liked;
     _likeCount = widget.room.likeCount;
+    _onlineCount = widget.room.onlineCount;
     _enterFullscreenLiveMode();
     // 监听平台无关的 LiveEngineEvent，页面不直接认识 AVPlayer/ExoPlayer。
     _engine = ref.read(liveEngineProvider);
@@ -122,10 +124,15 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
   }
 
   void _appendDanmaku(LiveChatMessage message) {
-    if (!mounted || !_isPublicLiveMessage(message)) return;
+    if (!mounted) return;
     setState(() {
-      _danmaku.add(message);
-      if (_danmaku.length > 8) _danmaku.removeAt(0);
+      if (message.onlineCount != null) {
+        _onlineCount = message.onlineCount!;
+      }
+      if (_isPublicLiveMessage(message)) {
+        _danmaku.add(message);
+        if (_danmaku.length > 8) _danmaku.removeAt(0);
+      }
     });
   }
 
@@ -189,6 +196,7 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
           child: _RoomHeader(
             room: widget.room,
             following: _following,
+            onlineCount: _onlineCount,
             onFollow: _toggleFollow,
           ),
         ),
@@ -362,11 +370,13 @@ class _RoomHeader extends StatelessWidget {
   const _RoomHeader({
     required this.room,
     required this.following,
+    required this.onlineCount,
     required this.onFollow,
   });
 
   final LiveRoom room;
   final bool following;
+  final int onlineCount;
   final VoidCallback onFollow;
 
   @override
@@ -392,9 +402,23 @@ class _RoomHeader extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              Text(
-                '${room.onlineCount} 人在线',
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                transitionBuilder: (child, animation) => FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0, 0.25),
+                      end: Offset.zero,
+                    ).animate(animation),
+                    child: child,
+                  ),
+                ),
+                child: Text(
+                  '$onlineCount 人在线',
+                  key: ValueKey<int>(onlineCount),
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
               ),
             ],
           ),
