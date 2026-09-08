@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:flutter_live_app/core/realtime/realtime_notification_client.dart';
 import 'package:flutter_live_app/features/notification/data/models/notification_item.dart';
 import 'package:flutter_live_app/features/search/data/models/search_result.dart';
 
@@ -41,5 +42,24 @@ void main() {
 
     expect(item.id, 'message:1');
     expect(item.unread, isTrue);
+  });
+
+  test('RealtimeNotificationEvent parses notification payloads', () {
+    final event = RealtimeNotificationEvent.fromJson({
+      'type': 'notification',
+      'event': 'room_liked',
+      'notification': {
+        'id': 'room-like:1:2:3',
+        'type': '直播互动',
+        'title': '观众',
+        'body': '赞了你的直播间',
+        'timeLabel': '刚刚',
+        'unread': true,
+      },
+    });
+
+    expect(event.type, 'notification');
+    expect(event.event, 'room_liked');
+    expect(event.notification?['unread'], isTrue);
   });
 }

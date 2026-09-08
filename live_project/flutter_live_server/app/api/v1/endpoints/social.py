@@ -18,6 +18,7 @@ from app.schemas.social import (
     UpdateProfileRequest,
 )
 from app.services.live_room_service import LiveRoomService
+from app.services.realtime_service import event_time, user_realtime_hub
 from app.services.social_service import SocialService
 
 router = APIRouter(tags=["phase4"])
@@ -81,13 +82,30 @@ def list_conversations(
 
 
 @router.post("/messages", response_model=ApiResponse[dict], status_code=201)
-def send_message(
+async def send_message(
     payload: MessageSendRequest,
     user: User = Depends(get_current_user),
     service: SocialService = Depends(get_social_service),
 ) -> ApiResponse[dict]:
     """发送一条私信；具体会话列表通过 GET 重新读取，避免本地状态漂移。"""
-    return success(service.send_message(payload, user), message="消息已发送")
+    result = service.send_message(payload, user)
+    await user_realtime_hub.publish(
+        payload.recipient_id,
+        {
+            "type": "notification",
+            "event": "message",
+            "notification": {
+                "id": f"message:{result['id']}",
+                "type": "互动消息",
+                "title": user.display_name,
+                "body": str(result["body"]),
+                "timeLabel": "刚刚",
+                "unread": True,
+            },
+            "sentAt": event_time(),
+        },
+    )
+    return success(result, message="消息已发送")
 
 
 @router.post("/messages/conversations/{other_user_id}/read", response_model=ApiResponse[None])
@@ -109,11 +127,19 @@ def list_notifications(
 
 
 @router.post("/notifications/read", response_model=ApiResponse[None])
-def mark_notifications_read(
+async def mark_notifications_read(
     user: User = Depends(get_current_user),
     service: SocialService = Depends(get_social_service),
 ) -> ApiResponse[None]:
     service.mark_notifications_read(user)
+    await user_realtime_hub.publish(
+        user.id,
+        {
+            "type": "notification",
+            "event": "read_all",
+            "sentAt": event_time(),
+        },
+    )
     return success(None, message="通知已读")
 
 
@@ -126,7 +152,7 @@ def list_following(
 
 
 @router.post("/live/rooms/{room_id}/follow", response_model=ApiResponse[ToggleInteractionResponse])
-def toggle_room_follow(
+async def toggle_room_follow(
     room_id: int = Path(..., ge=1),
     user: User = Depends(get_current_user),
     live_service: LiveRoomService = Depends(get_live_room_service),
@@ -134,11 +160,29 @@ def toggle_room_follow(
 ) -> ApiResponse[ToggleInteractionResponse]:
     """切换直播间关注；目标房间不存在时沿用直播业务的统一 404。"""
     room = live_service.get_room_detail(room_id)
-    return success(service.toggle_room_follow(room, user))
+    result = service.toggle_room_follow(room, user)
+    if result.active and room.anchor_user_id and room.anchor_user_id != user.id:
+        await user_realtime_hub.publish(
+            room.anchor_user_id,
+            {
+                "type": "notification",
+                "event": "room_followed",
+                "notification": {
+                    "id": f"room-follow:{room.id}:{user.id}",
+                    "type": "新关注",
+                    "title": user.display_name,
+                    "body": f"关注了你的直播间《{room.title}》",
+                    "timeLabel": "刚刚",
+                    "unread": True,
+                },
+                "sentAt": event_time(),
+            },
+        )
+    return success(result)
 
 
 @router.post("/live/rooms/{room_id}/like", response_model=ApiResponse[ToggleInteractionResponse])
-def toggle_room_like(
+async def toggle_room_like(
     room_id: int = Path(..., ge=1),
     user: User = Depends(get_current_user),
     live_service: LiveRoomService = Depends(get_live_room_service),
@@ -146,4 +190,22 @@ def toggle_room_like(
 ) -> ApiResponse[ToggleInteractionResponse]:
     """切换直播间点赞并返回最新总数。"""
     room = live_service.get_room_detail(room_id)
-    return success(service.toggle_room_like(room, user))
+    result = service.toggle_room_like(room, user)
+    if result.active and room.anchor_user_id and room.anchor_user_id != user.id:
+        await user_realtime_hub.publish(
+            room.anchor_user_id,
+            {
+                "type": "notification",
+                "event": "room_liked",
+                "notification": {
+                    "id": f"room-like:{room.id}:{user.id}:{result.count}",
+                    "type": "直播互动",
+                    "title": user.display_name,
+                    "body": f"赞了你的直播间《{room.title}》",
+                    "timeLabel": "刚刚",
+                    "unread": True,
+                },
+                "sentAt": event_time(),
+            },
+        )
+    return success(result)

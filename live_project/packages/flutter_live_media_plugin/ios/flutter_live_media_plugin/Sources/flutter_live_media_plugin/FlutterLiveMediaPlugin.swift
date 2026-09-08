@@ -237,6 +237,12 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
     // Flutter 页面只处理统一事件，不需要了解 KVO 或 NotificationCenter。
     statusObservation = item.observe(\.status, options: [.initial, .new]) {
       [weak self] item, _ in
+      if item.status == .readyToPlay {
+        // 在 PlatformView 仍处于布局阶段时，首个 play() 可能只把播放器置于
+        // waiting 状态；资源真正 ready 后再显式 play 一次，确保 AVPlayer.rate
+        // 和视频输出都真正启动。
+        player.play()
+      }
       if item.status == .failed {
         self?.scheduleRetry(message: item.error?.localizedDescription ?? "播放失败")
       }

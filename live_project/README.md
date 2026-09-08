@@ -16,7 +16,7 @@ live_project/
 └── docs/                           # 需求和实现提示文档
 ```
 
-当前已完成第一阶段 REST 闭环、第二阶段认证与实时基础能力、第三阶段媒体引擎抽象层、第四阶段 iOS/macOS Plugin 通信与 PlatformView 占位闭环，以及第五阶段 Apple 平台 AVPlayer 播放链路；推流和拉流协议适配仍未实现。
+当前已完成第一阶段 REST 闭环、第二阶段认证与实时基础能力、第三阶段媒体引擎抽象层、第四阶段 iOS/macOS Plugin 通信与 PlatformView 占位闭环，以及 Apple 平台 AVPlayer 播放链路。当前 Phase 5 已补齐用户级通知 WebSocket、房间弹幕自动重连和前端实时状态订阅；视频推流/媒体分发仍由独立媒体服务负责。
 
 ## 后端快速开始
 
@@ -82,6 +82,7 @@ iOS Simulator / macOS 可使用默认的 `localhost`；真机和 HarmonyOS 真�
 - FastAPI 统一响应、错误处理、CORS、SQLAlchemy 2.x Repository / Service 分层
 - MySQL `live_rooms` 表、Alembic 初始迁移、可重复执行的四条 Seed 数据
 - 第二阶段：用户注册/登录、JWT、Redis 在线人数、带 JWT 的直播间 WebSocket 弹幕
+- 当前 Phase 5：登录用户通知 WebSocket（私信、关注、点赞、已读事件）、房间弹幕/在线人数实时广播，以及客户端指数退避重连
 - 第三阶段：独立 `flutter_live_core`、`LiveEngine` 接口、生命周期事件模型和 `StubLiveEngine`；直播间已通过 Provider 使用可替换的媒体引擎边界
 - 第四阶段：iOS/macOS Swift Plugin、Pigeon 生成的 Dart/Swift API、原生 PlatformView 占位视图；Flutter 直播间已嵌入可替换的原生视图
 - 第五阶段：iOS/macOS 使用系统 AVPlayer 播放 HTTP/HTTPS 地址，并通过 AVPlayerLayer 渲染到 PlatformView

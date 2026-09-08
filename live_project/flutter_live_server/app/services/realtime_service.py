@@ -111,6 +111,74 @@ class RoomRealtimeHub:
 room_realtime_hub = RoomRealtimeHub()
 
 
+class UserRealtimeHub:
+    """管理用户级通知连接和 Redis Pub/Sub 转发。"""
+
+    def __init__(self) -> None:
+        self._connections: dict[int, set[WebSocket]] = {}
+
+    async def connect(self, user_id: int, websocket: WebSocket) -> Optional[PubSub]:
+        await websocket.accept()
+        self._connections.setdefault(user_id, set()).add(websocket)
+        try:
+            pubsub = get_async_redis().pubsub()
+            await pubsub.subscribe(self._channel(user_id))
+            return pubsub
+        except RedisError:
+            return None
+
+    async def disconnect(
+        self,
+        user_id: int,
+        websocket: WebSocket,
+        pubsub: Optional[PubSub],
+    ) -> None:
+        self._connections.get(user_id, set()).discard(websocket)
+        if not self._connections.get(user_id):
+            self._connections.pop(user_id, None)
+        if pubsub is not None:
+            try:
+                await pubsub.unsubscribe(self._channel(user_id))
+                await pubsub.close()
+            except RedisError:
+                pass
+
+    async def publish(self, user_id: int, payload: dict[str, Any]) -> None:
+        """优先跨进程广播；Redis 不可用时退回本进程连接。"""
+        message = json.dumps(payload, ensure_ascii=False)
+        try:
+            await get_async_redis().publish(self._channel(user_id), message)
+        except RedisError:
+            await self.broadcast_local(user_id, payload)
+
+    async def relay(self, websocket: WebSocket, pubsub: PubSub) -> None:
+        try:
+            while True:
+                message = await pubsub.get_message(
+                    ignore_subscribe_messages=True,
+                    timeout=1.0,
+                )
+                if message is not None and isinstance(message.get("data"), str):
+                    await websocket.send_text(message["data"])
+                await asyncio.sleep(0)
+        except (RedisError, RuntimeError):
+            return
+
+    async def broadcast_local(self, user_id: int, payload: dict[str, Any]) -> None:
+        for websocket in tuple(self._connections.get(user_id, ())):
+            try:
+                await websocket.send_json(payload)
+            except RuntimeError:
+                self._connections.get(user_id, set()).discard(websocket)
+
+    @staticmethod
+    def _channel(user_id: int) -> str:
+        return f"live:user:{user_id}:notifications"
+
+
+user_realtime_hub = UserRealtimeHub()
+
+
 def event_time() -> str:
     """生成统一的 UTC ISO 时间戳。"""
     return datetime.now(timezone.utc).isoformat()

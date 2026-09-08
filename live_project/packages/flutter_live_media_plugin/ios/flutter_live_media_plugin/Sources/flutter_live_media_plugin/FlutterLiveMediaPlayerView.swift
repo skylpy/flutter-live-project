@@ -35,19 +35,11 @@ final class FlutterLiveMediaPlayerViewFactory: NSObject, FlutterPlatformViewFact
 final class FlutterLiveMediaPlayerView: UIView, FlutterPlatformView {
   private let label = UILabel(frame: .zero)
 
-  // 让 AVPlayerLayer 直接成为 UIView 的 backing layer。相比把播放器层作为
-  // 普通 sublayer 动态添加，这种方式能让 UIKit/Flutter PlatformView 在布局、
-  // 尺寸变化和模拟器渲染路径下始终使用同一个视频输出层。
-  override class var layerClass: AnyClass {
-    AVPlayerLayer.self
-  }
-
-  private var playerLayer: AVPlayerLayer {
-    // 因为 layerClass 返回 AVPlayerLayer，所以这里拿到的就是 View 的 backing
-    // layer，而不是额外创建的 CALayer。这样 Flutter PlatformView 的尺寸变化
-    // 会自然传递给视频层。
-    layer as! AVPlayerLayer
-  }
+  // 不把 AVPlayerLayer 作为 UIView 的 backing layer。Flutter 的 UiKitView 在
+  // 模拟器和真机上都可能重建/替换宿主 layer，独立持有视频子层更稳定，也能
+  // 在 layoutSubviews 中明确同步尺寸，避免 AVPlayer 已经 playing 但画面仍为黑屏。
+  private let playerLayer = AVPlayerLayer()
+  private var currentPlayer: AVPlayer?
 
   override init(frame: CGRect) {
     // View 创建时还没有播放器，先显示黑色背景和 AVPlayer 占位文字。
@@ -55,8 +47,11 @@ final class FlutterLiveMediaPlayerView: UIView, FlutterPlatformView {
     super.init(frame: frame)
     backgroundColor = .black
     clipsToBounds = true
+    playerLayer.frame = bounds
+    playerLayer.backgroundColor = UIColor.black.cgColor
     // 直播间是沉浸式全屏，竖屏画面按比例裁切填满容器，避免黑边。
     playerLayer.videoGravity = .resizeAspectFill
+    layer.addSublayer(playerLayer)
 
     label.text = "AVPlayer"
     label.textColor = UIColor.white.withAlphaComponent(0.65)
@@ -79,14 +74,24 @@ final class FlutterLiveMediaPlayerView: UIView, FlutterPlatformView {
   }
 
   func setPlayer(_ player: AVPlayer?) {
-    // 直接替换 backing layer 的 AVPlayer，不叠加多个视频层，也不改变 Flutter
+    // 只替换同一个视频子层的 player，不叠加多个视频层，也不改变 Flutter
     // PlatformView 的宿主视图；播放器重连时只会替换这里的 player 引用。
+    currentPlayer = player
     playerLayer.player = player
     label.isHidden = player != nil
   }
 
   override func layoutSubviews() {
     super.layoutSubviews()
+    let hadZeroBounds = playerLayer.bounds.size == .zero
+    playerLayer.frame = bounds
+    // Flutter 创建 UiKitView 时可能先给出 0×0，下一帧才完成布局。AVPlayerLayer
+    // 若在零尺寸时首次绑定播放器，部分 iOS 模拟器/真机不会自动恢复视频输出；
+    // 第一次获得有效尺寸后重新挂载同一个 AVPlayer，避免重新请求或重建播放会话。
+    if hadZeroBounds, bounds.width > 0, bounds.height > 0, let currentPlayer {
+      playerLayer.player = nil
+      playerLayer.player = currentPlayer
+    }
   }
 }
 

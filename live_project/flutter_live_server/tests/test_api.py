@@ -1,9 +1,12 @@
 from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from app.api.deps import get_live_room_service
+from app.api.v1.endpoints.realtime import _user_from_token
 from app.core.exceptions import NotFoundException
+from app.core.security import create_access_token
 from app.main import app
 from app.models.live_room import LiveRoom
 
@@ -53,3 +56,19 @@ def test_live_api_response_and_not_found() -> None:
         "message": "直播间不存在",
         "data": None,
     }
+
+
+def test_realtime_token_claims_are_decoded_for_websocket_identity() -> None:
+    token = create_access_token(7, "realtime-user")
+
+    assert _user_from_token(token) == (7, "realtime-user")
+    assert _user_from_token("not-a-token") == (None, None)
+
+
+def test_notification_websocket_rejects_missing_token() -> None:
+    with TestClient(app) as client:
+        try:
+            with client.websocket_connect("/api/v1/ws/notifications") as websocket:
+                websocket.receive_json()
+        except WebSocketDisconnect as error:
+            assert error.code == 1008

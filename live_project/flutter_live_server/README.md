@@ -37,6 +37,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - `POST /api/v1/auth/login`
 - `GET /api/v1/auth/me`（Bearer JWT）
 - `WS /api/v1/live/ws/rooms/{room_id}?token=...`
+- `WS /api/v1/ws/notifications?token=...`
 - Swagger：`/docs`
 
-第二阶段已启用 JWT 认证、Redis 在线人数和基础 WebSocket 弹幕；消息暂不持久化。直播列表和详情接口需要 MySQL 已启动且已完成迁移和 Seed，WebSocket 在线人数需要 Redis。
+实时通道说明：房间 WebSocket 负责弹幕和在线人数；用户通知 WebSocket 负责私信、关注、点赞和全部已读事件。两条连接都使用 JWT 查询参数，客户端断线后自动指数退避重连。历史通知和消息仍以 MySQL REST 接口为准，Redis 不可用时服务端会退回当前进程内广播。

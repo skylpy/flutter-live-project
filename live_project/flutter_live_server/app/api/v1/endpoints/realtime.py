@@ -6,9 +6,47 @@ import jwt
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from app.core.config import settings
-from app.services.realtime_service import event_time, room_realtime_hub
+from app.services.realtime_service import event_time, room_realtime_hub, user_realtime_hub
 
 router = APIRouter(tags=["realtime"])
+
+
+@router.websocket("/ws/notifications")
+async def notification_websocket(
+    websocket: WebSocket,
+    token: Optional[str] = Query(default=None),
+) -> None:
+    """登录用户的通知流；消息中心仍保留 HTTP 作为历史数据源。"""
+    user_id, username = _user_from_token(token)
+    if user_id is None or username is None:
+        await websocket.close(code=1008, reason="unauthorized")
+        return
+
+    pubsub = await user_realtime_hub.connect(user_id, websocket)
+    relay_task = (
+        asyncio.create_task(user_realtime_hub.relay(websocket, pubsub))
+        if pubsub is not None
+        else None
+    )
+    try:
+        await websocket.send_json(
+            {
+                "type": "system",
+                "event": "connected",
+                "userId": user_id,
+                "userName": username,
+                "sentAt": event_time(),
+            }
+        )
+        while True:
+            # 用户通知通道只下行；客户端发送内容统一拒绝，避免误把它当成私信写入。
+            await websocket.receive_text()
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+    finally:
+        if relay_task is not None:
+            relay_task.cancel()
+        await user_realtime_hub.disconnect(user_id, websocket, pubsub)
 
 
 @router.websocket("/live/ws/rooms/{room_id}")

@@ -5,7 +5,19 @@ import 'dart:async';
 
 import '../core/network/api_provider.dart';
 import '../core/theme/app_theme.dart';
+import '../features/auth/presentation/controllers/auth_controller.dart';
 import 'router/app_router.dart';
+
+final realtimeNotificationSessionProvider = Provider<void>((ref) {
+  final authState = ref.watch(authControllerProvider);
+  final client = ref.watch(realtimeNotificationClientProvider);
+  final session = authState.asData?.value;
+  if (session == null) {
+    unawaited(client.disconnect());
+  } else {
+    unawaited(client.connect());
+  }
+});
 
 /// App 根节点：Riverpod 管理主题，go_router 管理页面和导航栈。
 class LiveApp extends ConsumerStatefulWidget {
@@ -51,6 +63,8 @@ class _LiveAppState extends ConsumerState<LiveApp> {
 
   @override
   Widget build(BuildContext context) {
+    // 登录状态变化时自动建立/关闭用户级通知 WebSocket。
+    ref.watch(realtimeNotificationSessionProvider);
     return MaterialApp.router(
       title: 'Flutter Live',
       debugShowCheckedModeBanner: false,

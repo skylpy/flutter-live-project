@@ -20,8 +20,16 @@ final messageControllerProvider =
 /// 消息页只观察这个 Controller，不直接维护“已读/未读”的临时列表。
 class MessageController extends AsyncNotifier<List<MessageConversation>> {
   @override
-  Future<List<MessageConversation>> build() =>
-      ref.read(messageRepositoryProvider).getConversations();
+  Future<List<MessageConversation>> build() async {
+    final client = ref.read(realtimeNotificationClientProvider);
+    final subscription = client.events.listen((event) {
+      if (event.type == 'notification' && event.event == 'message') {
+        ref.invalidateSelf();
+      }
+    });
+    ref.onDispose(subscription.cancel);
+    return ref.read(messageRepositoryProvider).getConversations();
+  }
 
   Future<void> markRead(int userId) async {
     final current = state.asData?.value;

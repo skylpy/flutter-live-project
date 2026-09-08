@@ -32,13 +32,17 @@ class LiveRoomPage extends ConsumerWidget {
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
       resizeToAvoidBottomInset: false,
+      //AsyncValue 三态渲染（Riverpod 标准写法）
       body: room.when(
+        //加载中
         loading: () =>
             const Center(child: CircularProgressIndicator(color: Colors.white)),
+        //加载错误
         error: (error, stackTrace) => _RoomError(
           message: error.toString(),
           onRetry: () => ref.invalidate(liveRoomControllerProvider(roomId)),
         ),
+        //拿到完整直播间实体 data，交给业务内容组件 _LiveRoomContent 渲染直播画面、弹幕、聊天、礼物等整套直播间 UI。
         data: (data) => _LiveRoomContent(room: data),
       ),
     );
@@ -131,7 +135,9 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
       }
       if (_isPublicLiveMessage(message)) {
         _danmaku.add(message);
-        if (_danmaku.length > 8) _danmaku.removeAt(0);
+        // 只限制内存中的历史长度，显示层会用固定高度窗口展示最近几条，
+        // 用户仍可向上滚动查看更早的公屏消息。
+        if (_danmaku.length > 120) _danmaku.removeAt(0);
       }
     });
   }
@@ -183,6 +189,8 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
   @override
   Widget build(BuildContext context) {
     final safePadding = MediaQuery.paddingOf(context);
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final keyboardVisible = keyboardInset > 0;
     return Stack(
       children: [
         // 直播视频铺满整个页面，标题、弹幕和互动栏全部作为透明叠加层，
@@ -202,20 +210,26 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
         ),
         Positioned(
           left: 16,
-          bottom: safePadding.bottom + 92,
+          bottom: keyboardVisible
+              ? keyboardInset + 132
+              : safePadding.bottom + 92,
           child: LiveDanmakuList(messages: _danmaku),
         ),
         Positioned(
           right: 18,
-          bottom: safePadding.bottom + 148,
+          bottom: keyboardVisible
+              ? keyboardInset + 188
+              : safePadding.bottom + 148,
           child: IgnorePointer(
             child: _FloatingHeartOverlay(burstSeed: _heartBurstSeed),
           ),
         ),
-        Positioned(
-          left: 16,
-          right: 16,
-          bottom: safePadding.bottom + 12,
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          left: keyboardVisible ? 0 : 16,
+          right: keyboardVisible ? 0 : 16,
+          bottom: keyboardVisible ? keyboardInset : safePadding.bottom + 12,
           child: _RoomInputBar(
             roomId: widget.room.id.toString(),
             onMessage: _appendDanmaku,
@@ -223,6 +237,7 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
             liked: _liked,
             likeCount: _likeCount,
             onLike: _handleLike,
+            keyboardVisible: keyboardVisible,
           ),
         ),
       ],
@@ -453,6 +468,7 @@ class _RoomInputBar extends ConsumerStatefulWidget {
     required this.liked,
     required this.likeCount,
     required this.onLike,
+    required this.keyboardVisible,
   });
 
   final String roomId;
@@ -461,6 +477,7 @@ class _RoomInputBar extends ConsumerStatefulWidget {
   final bool liked;
   final int likeCount;
   final VoidCallback onLike;
+  final bool keyboardVisible;
 
   @override
   ConsumerState<_RoomInputBar> createState() => _RoomInputBarState();
@@ -468,8 +485,10 @@ class _RoomInputBar extends ConsumerStatefulWidget {
 
 class _RoomInputBarState extends ConsumerState<_RoomInputBar> {
   final _textController = TextEditingController();
+  final _inputFocusNode = FocusNode();
   final _chatClient = LiveChatClient();
   StreamSubscription<LiveChatMessage>? _subscription;
+  StreamSubscription<LiveChatConnectionState>? _stateSubscription;
   bool _connected = false;
   String? _status;
 
@@ -482,8 +501,10 @@ class _RoomInputBarState extends ConsumerState<_RoomInputBar> {
   @override
   void dispose() {
     _textController.dispose();
+    _inputFocusNode.dispose();
     _subscription?.cancel();
-    _chatClient.dispose();
+    _stateSubscription?.cancel();
+    unawaited(_chatClient.dispose());
     super.dispose();
   }
 
@@ -504,6 +525,18 @@ class _RoomInputBarState extends ConsumerState<_RoomInputBar> {
         setState(() => _status = message.message);
       }
     });
+    _stateSubscription = _chatClient.states.listen((state) {
+      if (!mounted) return;
+      setState(() {
+        _connected = state == LiveChatConnectionState.connected;
+        _status = switch (state) {
+          LiveChatConnectionState.connecting => '弹幕连接中…',
+          LiveChatConnectionState.reconnecting => '弹幕重连中…',
+          LiveChatConnectionState.disconnected => '弹幕已断开',
+          LiveChatConnectionState.connected => null,
+        };
+      });
+    });
     try {
       await _chatClient.connect(widget.roomId, token);
       if (mounted) setState(() => _connected = true);
@@ -522,74 +555,178 @@ class _RoomInputBarState extends ConsumerState<_RoomInputBar> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (_status != null)
-          Padding(
-            padding: const EdgeInsets.only(left: 12, bottom: 5),
-            child: Text(
-              _status!,
-              style: const TextStyle(color: Colors.white60, fontSize: 11),
-            ),
-          ),
-        Row(
+    final isKeyboardVisible = widget.keyboardVisible;
+    final textColor = isKeyboardVisible ? Colors.black87 : Colors.white;
+    final hintColor = isKeyboardVisible ? Colors.black38 : Colors.white60;
+
+    return Material(
+      color: isKeyboardVisible ? Colors.white : Colors.transparent,
+      elevation: isKeyboardVisible ? 8 : 0,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          isKeyboardVisible ? 16 : 0,
+          isKeyboardVisible ? 10 : 0,
+          isKeyboardVisible ? 16 : 0,
+          isKeyboardVisible ? 8 : 0,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: TextField(
-                controller: _textController,
-                onSubmitted: (_) => _send(),
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: '说点什么...',
-                  hintStyle: const TextStyle(color: Colors.white60),
-                  filled: true,
-                  fillColor: Colors.white12,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
+            if (_status != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 12, bottom: 5),
+                child: Text(
+                  _status!,
+                  style: TextStyle(
+                    color: isKeyboardVisible ? Colors.black45 : Colors.white60,
+                    fontSize: 11,
                   ),
                 ),
               ),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _textController,
+                    focusNode: _inputFocusNode,
+                    onSubmitted: (_) => _send(),
+                    textInputAction: TextInputAction.send,
+                    style: TextStyle(color: textColor),
+                    decoration: InputDecoration(
+                      hintText: '说点什么...',
+                      hintStyle: TextStyle(color: hintColor),
+                      filled: true,
+                      fillColor: isKeyboardVisible
+                          ? Colors.black.withValues(alpha: 0.06)
+                          : Colors.white12,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                ),
+                if (isKeyboardVisible) ...[
+                  const SizedBox(width: 10),
+                  FilledButton(
+                    onPressed: _send,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.pinkAccent,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      minimumSize: const Size(0, 44),
+                    ),
+                    child: const Text('发送'),
+                  ),
+                ] else ...[
+                  IconButton(
+                    onPressed: () => _showAction('礼物功能即将开放'),
+                    color: Colors.white,
+                    icon: const Icon(Icons.card_giftcard),
+                    tooltip: '送礼物',
+                  ),
+                  IconButton(
+                    onPressed: () => _showAction('直播间链接已准备分享'),
+                    color: Colors.white,
+                    icon: const Icon(Icons.ios_share_outlined),
+                    tooltip: '分享直播间',
+                  ),
+                  IconButton(
+                    onPressed: () => _showAction('更多功能即将开放'),
+                    color: Colors.white,
+                    icon: const Icon(Icons.more_horiz),
+                    tooltip: '更多',
+                  ),
+                  IconButton(
+                    onPressed: widget.onLike,
+                    color: widget.liked ? Colors.pinkAccent : Colors.white,
+                    icon: const Icon(Icons.favorite),
+                    tooltip: '点赞 ${widget.likeCount}',
+                  ),
+                  IconButton(
+                    onPressed: _send,
+                    color: Colors.pinkAccent,
+                    icon: const Icon(Icons.send),
+                    tooltip: '发送弹幕',
+                  ),
+                ],
+              ],
             ),
-            IconButton(
-              onPressed: () => _showAction('礼物功能即将开放'),
-              color: Colors.white,
-              icon: const Icon(Icons.card_giftcard),
-              tooltip: '送礼物',
-            ),
-            IconButton(
-              onPressed: () => _showAction('直播间链接已准备分享'),
-              color: Colors.white,
-              icon: const Icon(Icons.ios_share_outlined),
-              tooltip: '分享直播间',
-            ),
-            IconButton(
-              onPressed: () => _showAction('更多功能即将开放'),
-              color: Colors.white,
-              icon: const Icon(Icons.more_horiz),
-              tooltip: '更多',
-            ),
-            IconButton(
-              onPressed: widget.onLike,
-              color: widget.liked ? Colors.pinkAccent : Colors.white,
-              icon: const Icon(Icons.favorite),
-              tooltip: '点赞 ${widget.likeCount}',
-            ),
-            IconButton(
-              onPressed: _send,
-              color: Colors.pinkAccent,
-              icon: const Icon(Icons.send),
-              tooltip: '发送弹幕',
-            ),
+            if (isKeyboardVisible) ...[
+              const SizedBox(height: 6),
+              SizedBox(
+                height: 38,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _QuickChatAction(
+                      label: '😂',
+                      onTap: () => _insertQuickText('😂'),
+                    ),
+                    _QuickChatAction(
+                      label: '❤️',
+                      onTap: () => _insertQuickText('❤️'),
+                    ),
+                    _QuickChatAction(
+                      label: '👏',
+                      onTap: () => _insertQuickText('👏'),
+                    ),
+                    _QuickChatAction(
+                      icon: Icons.alternate_email,
+                      onTap: () => _insertQuickText('@'),
+                    ),
+                    _QuickChatAction(
+                      icon: Icons.mic_none,
+                      onTap: () => _showAction('语音功能即将开放'),
+                    ),
+                    _QuickChatAction(
+                      icon: Icons.emoji_emotions_outlined,
+                      onTap: _showEmojiKeyboard,
+                    ),
+                    _QuickChatAction(
+                      icon: Icons.add_circle_outline,
+                      onTap: () => _showAction('更多互动功能即将开放'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
-      ],
+      ),
     );
+  }
+
+  void _insertQuickText(String value) {
+    final text = _textController.text;
+    final selection = _textController.selection;
+    final start = selection.isValid ? selection.start : text.length;
+    final end = selection.isValid ? selection.end : text.length;
+    _textController.value = TextEditingValue(
+      text: text.replaceRange(start, end, value),
+      selection: TextSelection.collapsed(offset: start + value.length),
+    );
+  }
+
+  Future<void> _showEmojiKeyboard() async {
+    // 先收起系统键盘，再打开独立的表情面板，避免两个面板同时争夺底部空间。
+    FocusScope.of(context).unfocus();
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      showDragHandle: true,
+      builder: (context) => const _EmojiKeyboard(),
+    );
+    if (!mounted) return;
+    if (selected != null) {
+      _insertQuickText(selected);
+      _inputFocusNode.requestFocus();
+    }
   }
 
   void _showAction(String message) {
@@ -602,6 +739,109 @@ class _RoomInputBarState extends ConsumerState<_RoomInputBar> {
           duration: const Duration(milliseconds: 900),
         ),
       );
+  }
+}
+
+class _QuickChatAction extends StatelessWidget {
+  const _QuickChatAction({this.label, this.icon, required this.onTap});
+
+  final String? label;
+  final IconData? icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkResponse(
+      onTap: onTap,
+      radius: 22,
+      child: SizedBox(
+        width: 38,
+        height: 38,
+        child: Center(
+          child: label != null
+              ? Text(label!, style: const TextStyle(fontSize: 24))
+              : Icon(icon, color: Colors.black87, size: 25),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmojiKeyboard extends StatelessWidget {
+  const _EmojiKeyboard();
+
+  static const _emojis = <String>[
+    '😀',
+    '😂',
+    '🤣',
+    '😊',
+    '😍',
+    '🥰',
+    '😘',
+    '😎',
+    '🤔',
+    '😮',
+    '😭',
+    '😡',
+    '👏',
+    '🙌',
+    '👍',
+    '👎',
+    '❤️',
+    '🧡',
+    '💛',
+    '💚',
+    '💙',
+    '💜',
+    '💖',
+    '💯',
+    '🔥',
+    '🎉',
+    '🎁',
+    '🌹',
+    '✨',
+    '💔',
+    '🙏',
+    '👋',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 300,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Text(
+              '表情',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ),
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 8,
+                childAspectRatio: 1.25,
+              ),
+              itemCount: _emojis.length,
+              itemBuilder: (context, index) {
+                final emoji = _emojis[index];
+                return InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => Navigator.of(context).pop(emoji),
+                  child: Center(
+                    child: Text(emoji, style: const TextStyle(fontSize: 25)),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

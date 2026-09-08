@@ -1,22 +1,24 @@
 package com.skylpy.flutter_live_media_plugin
 
 import android.content.Context
-import android.graphics.Color
+import android.graphics.Matrix
+import android.graphics.SurfaceTexture
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.Gravity
 import android.view.View
 import android.view.TextureView
+import android.widget.FrameLayout
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
 import com.pedro.common.ConnectChecker
 import com.pedro.encoder.input.sources.OrientationForced
 import com.pedro.encoder.input.sources.video.Camera2Source
@@ -436,21 +438,64 @@ private class AndroidLiveMediaPlayerView(
     context: Context,
     player: ExoPlayer,
 ) : PlatformView {
-    // PlayerView 只是渲染容器，播放控制权仍归 AndroidLiveMediaEngine。
-    private val playerView = PlayerView(context).apply {
-        this.player = player
-        useController = false
-        // 直播间采用沉浸式全屏，按竖屏视频裁切填满容器，避免上下/左右出现
-        // 大块黑边；源视频仍保持 720x1280 的竖屏编码。
-        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-        setShutterBackgroundColor(Color.BLACK)
+    // Flutter 的混合合成模式下，PlayerView 默认使用 SurfaceView；在部分
+    // Android 模拟器/设备上会出现解码正常但截图和 Flutter 叠加层花屏的问题。
+    // TextureView 走 Flutter 兼容的纹理合成路径，避免 SurfaceView 穿透/撕裂。
+    private val textureView = TextureView(context)
+    private val exoPlayer = player
+    private val container = FrameLayout(context).apply {
+        setBackgroundColor(android.graphics.Color.BLACK)
+        addView(
+            textureView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER,
+            ),
+        )
+    }
+    private val playerListener = object : Player.Listener {
+        override fun onVideoSizeChanged(videoSize: VideoSize) {
+            applyCenterCrop(videoSize)
+        }
     }
 
-    override fun getView(): View = playerView
+    init {
+        exoPlayer.addListener(playerListener)
+        exoPlayer.setVideoTextureView(textureView)
+        // Media3 自己管理 TextureView 的 SurfaceTextureListener；这里不覆盖它，
+        // 只在绑定完成后的布局帧补一次裁切，后续尺寸变化由 onVideoSizeChanged
+        // 统一处理，避免插件自身重复接管 SurfaceTexture 生命周期。
+        textureView.post { applyCenterCrop(exoPlayer.videoSize) }
+    }
+
+    private fun applyCenterCrop(videoSize: VideoSize) {
+        val viewWidth = textureView.width.toFloat()
+        val viewHeight = textureView.height.toFloat()
+        if (viewWidth <= 0f || viewHeight <= 0f || videoSize.width <= 0 || videoSize.height <= 0) {
+            return
+        }
+
+        val videoWidth = videoSize.width * videoSize.pixelWidthHeightRatio
+        val videoHeight = videoSize.height.toFloat()
+        val scale = maxOf(viewWidth / videoWidth, viewHeight / videoHeight)
+        val matrix = Matrix().apply {
+            setScale(
+                videoWidth * scale / viewWidth,
+                videoHeight * scale / viewHeight,
+                viewWidth / 2f,
+                viewHeight / 2f,
+            )
+        }
+        textureView.setTransform(matrix)
+    }
+
+    override fun getView(): View = container
 
     override fun dispose() {
-        // 只解除视图与播放器的引用，不在这里 release 全局播放器；插件销毁时统一释放。
-        playerView.player = null
+        // 只解除纹理和监听，不在这里 release 全局播放器；插件销毁时统一释放。
+        exoPlayer.removeListener(playerListener)
+        exoPlayer.clearVideoTextureView(textureView)
     }
 }
 
