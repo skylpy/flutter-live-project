@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_live_core/flutter_live_core.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../data/models/live_room.dart';
 import '../../data/datasources/live_chat_client.dart';
@@ -206,6 +207,9 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
             following: _following,
             onlineCount: _onlineCount,
             onFollow: _toggleFollow,
+            onOpenAnchorProfile: widget.room.anchorUserId == null
+                ? null
+                : () => context.push('/feed/users/${widget.room.anchorUserId}'),
           ),
         ),
         Positioned(
@@ -387,55 +391,65 @@ class _RoomHeader extends StatelessWidget {
     required this.following,
     required this.onlineCount,
     required this.onFollow,
+    this.onOpenAnchorProfile,
   });
 
   final LiveRoom room;
   final bool following;
   final int onlineCount;
   final VoidCallback onFollow;
+  final VoidCallback? onOpenAnchorProfile;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        CircleAvatar(
-          backgroundColor: Colors.white24,
-          child: Text(
-            room.anchorName.isEmpty ? '?' : room.anchorName[0],
-            style: const TextStyle(color: Colors.white),
+        InkWell(
+          onTap: onOpenAnchorProfile,
+          borderRadius: BorderRadius.circular(24),
+          child: CircleAvatar(
+            backgroundColor: Colors.white24,
+            child: Text(
+              room.anchorName.isEmpty ? '?' : room.anchorName[0],
+              style: const TextStyle(color: Colors.white),
+            ),
           ),
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                room.anchorName,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                transitionBuilder: (child, animation) => FadeTransition(
-                  opacity: animation,
-                  child: SlideTransition(
-                    position: Tween<Offset>(
-                      begin: const Offset(0, 0.25),
-                      end: Offset.zero,
-                    ).animate(animation),
-                    child: child,
+          child: InkWell(
+            onTap: onOpenAnchorProfile,
+            borderRadius: BorderRadius.circular(8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  room.anchorName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                child: Text(
-                  '$onlineCount 人在线',
-                  key: ValueKey<int>(onlineCount),
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, 0.25),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      child: child,
+                    ),
+                  ),
+                  child: Text(
+                    '$onlineCount 人在线',
+                    key: ValueKey<int>(onlineCount),
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         OutlinedButton(

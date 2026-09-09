@@ -31,4 +31,70 @@ class FeedRemoteDataSource {
     );
     return response.data;
   }
+
+  Future<FeedPost> getPost(int postId) async {
+    final response = await _apiClient.get<FeedPost>(
+      '/feed/posts/$postId',
+      parseData: (value) =>
+          FeedPost.fromJson(Map<String, Object?>.from(value as Map)),
+    );
+    return response.data;
+  }
+
+  Future<List<FeedComment>> getComments(int postId) async {
+    final response = await _apiClient.get<List<FeedComment>>(
+      '/feed/posts/$postId/comments',
+      parseData: (value) => (value is List ? value : const <Object?>[])
+          .whereType<Map>()
+          .map((item) => FeedComment.fromJson(Map<String, Object?>.from(item)))
+          .toList(growable: false),
+    );
+    return response.data;
+  }
+
+  Future<FeedComment> createComment({
+    required int postId,
+    required String body,
+  }) async {
+    final response = await _apiClient.post<FeedComment>(
+      '/feed/posts/$postId/comments',
+      data: {'body': body},
+      parseData: (value) =>
+          FeedComment.fromJson(Map<String, Object?>.from(value as Map)),
+    );
+    return response.data;
+  }
+
+  Future<void> deletePost(int postId) =>
+      _apiClient.delete('/feed/posts/$postId');
+
+  Future<FeedAuthorProfile> getAuthorProfile(int userId) async {
+    final response = await _apiClient.get<FeedAuthorProfile>(
+      '/feed/users/$userId',
+      parseData: (value) =>
+          FeedAuthorProfile.fromJson(Map<String, Object?>.from(value as Map)),
+    );
+    return response.data;
+  }
+
+  Future<FeedInteraction> toggleUserFollow(int userId) async {
+    final response = await _apiClient.post<FeedInteraction>(
+      '/users/$userId/follow',
+      parseData: FeedInteraction.fromJson,
+    );
+    return response.data;
+  }
+
+  Future<FeedPost> createPost({
+    required String body,
+    required List<int> fileIds,
+  }) async {
+    final response = await _apiClient.post<FeedPost>(
+      '/feed/posts',
+      data: {'body': body, 'file_ids': fileIds},
+      parseData: (value) =>
+          FeedPost.fromJson(Map<String, Object?>.from(value as Map)),
+    );
+    return response.data;
+  }
 }

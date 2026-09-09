@@ -22,7 +22,7 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
   private weak var playerView: FlutterLiveMediaPlayerView?
 
   // 主播预览与观众播放器是两个独立 PlatformView。主播预览绑定 HaishinKit
-  // 的 HKView，观众播放器绑定 AVPlayerLayer，不能把两者混用。
+  // 的 MTHKView，观众播放器绑定 AVPlayerLayer，不能把两者混用。
   private weak var publisherView: FlutterLiveMediaPublisherView?
 
   // 当前播放地址是“播放会话”的唯一标识。stop() 会清空它，让已经排队的
@@ -55,6 +55,13 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
   private var pushStreamName: String?
   private var pushConnectionURL: String?
 
+  // 采集会话的事件不能只依赖 Flutter 侧“权限已授予”的结果。权限成功后，设备
+  // 仍可能被系统中断、被其他 App 占用，或者因为配置失败而没有真正开始运行。
+  // 这里直接监听 AVCaptureSession，只有它进入 running 才告诉 Flutter 预览已就绪。
+  private var captureSessionTokens: [NSObjectProtocol] = []
+  private weak var observedCaptureSession: AVCaptureSession?
+  private var previewStartTimeout: DispatchWorkItem?
+
   init(messenger: FlutterBinaryMessenger) {
     // messenger 是 FlutterEngine 的平台消息通道。Pigeon 会在这条通道上
     // 注册 HostApi，同时使用同一个通道把事件发回 Dart。
@@ -66,6 +73,7 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
     // 插件对象销毁时做最后一次资源清理，防止 KVO 和延迟重连持有闭包引用。
     clearPlayerObservers()
     retryWorkItem?.cancel()
+    clearCaptureSessionObservers()
     stopPushResources()
   }
 
@@ -143,12 +151,17 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
   }
 
   func startPreview() async throws -> Bool {
-    // 权限由 Flutter 页面先申请，这里只负责把 AVCaptureDevice 交给 HaishinKit。
-    // 真正的推流要等 startPush() 连接 RTMP 成功后才 publish。
-    return await MainActor.run {
-      guard preparePushResources() else { return false }
-      emit(type: .previewStarted, message: "iOS 摄像头预览已准备")
+    // 权限由 Flutter 页面先申请，但仍在原生层再次确认：系统设置被修改、权限
+    // 回调与页面切换竞态时，旧代码会直接回报“预览已准备”，实际上没有一帧画面。
+    do {
+      let stream = try await preparePushResources()
+      await MainActor.run {
+        bindPublisherView(to: stream)
+      }
       return true
+    } catch {
+      emit(type: .error, message: "iOS 摄像头预览启动失败：\(error.localizedDescription)")
+      return false
     }
   }
 
@@ -157,15 +170,24 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
       emit(type: .error, message: "推流地址必须是有效的 RTMP/RTMPS 地址")
       return false
     }
-    return await MainActor.run {
-      guard preparePushResources() else { return false }
-      guard let connection = rtmpConnection else { return false }
+    do {
+      let stream = try await preparePushResources()
+      return await MainActor.run {
+      guard let connection = rtmpConnection else {
+        emit(type: .error, message: "iOS 推流连接尚未初始化")
+        return false
+      }
+      bindPublisherView(to: stream)
       pushConnectionURL = pushURL.connectionURL
       pushStreamName = pushURL.streamName
       installPushObservers(on: connection)
       emit(type: .pushConnecting, message: "正在连接 RTMP 推流服务器")
       connection.connect(pushURL.connectionURL)
       return true
+      }
+    } catch {
+      emit(type: .error, message: "iOS 推流采集初始化失败：\(error.localizedDescription)")
+      return false
     }
   }
 
@@ -178,33 +200,43 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
   }
 
   func switchCamera() async throws -> Bool {
-    await MainActor.run {
+    let streamAndPosition = await MainActor.run { () -> (RTMPStream, AVCaptureDevice.Position)? in
       guard let stream = rtmpStream else {
         emit(type: .error, message: "摄像头预览尚未启动")
-        return false
+        return nil
       }
       let nextPosition: AVCaptureDevice.Position = usesFrontCamera ? .back : .front
-      guard let camera = AVCaptureDevice.default(
-        .builtInWideAngleCamera,
-        for: .video,
-        position: nextPosition
-      ) else {
-        emit(type: .error, message: "没有可用的另一颗摄像头")
-        return false
-      }
+      return (stream, nextPosition)
+    }
+    guard let (stream, nextPosition) = streamAndPosition else { return false }
+    guard let camera = AVCaptureDevice.default(
+      .builtInWideAngleCamera,
+      for: .video,
+      position: nextPosition
+    ) else {
+      emit(type: .error, message: "没有可用的另一颗摄像头")
+      return false
+    }
 
-      var attachError: Error?
-      stream.attachCamera(camera) { error in
-        attachError = error
+    do {
+      // 与 HaishinKit 官方示例保持相同的切换方式：同一采集会话中只更换主
+      // camera input，不重新启动 session 或重新挂载 MTHKView。后两种操作会令
+      // 已连接 RTMP 编码器的会话在部分 iPad/iPhone 上失去视频输出。
+      await MainActor.run {
+        stream.videoCapture(for: 0)?.isVideoMirrored = nextPosition == .front
       }
-      if let attachError {
-        emit(type: .error, message: "切换摄像头失败：\(attachError.localizedDescription)")
-        return false
+      try await attachCamera(camera, to: stream)
+      await MainActor.run {
+        usesFrontCamera = nextPosition == .front
+        emit(
+          type: .previewStarted,
+          message: usesFrontCamera ? "已切换前置摄像头" : "已切换后置摄像头"
+        )
       }
-      usesFrontCamera.toggle()
-      publisherView?.setStream(stream)
-      emit(type: .previewStarted, message: usesFrontCamera ? "已切换前置摄像头" : "已切换后置摄像头")
       return true
+    } catch {
+      emit(type: .error, message: "切换摄像头失败：\(error.localizedDescription)")
+      return false
     }
   }
 
@@ -348,59 +380,214 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
     // PlatformView 可能先于 startPreview 创建，因此这里先绑定当前 stream；
     // 如果 stream 尚未创建，preparePushResources() 完成后会再次绑定。
     publisherView = view
-    view.setStream(rtmpStream)
+    if let stream = rtmpStream {
+      bindPublisherView(to: stream)
+    }
   }
 
-  private func preparePushResources() -> Bool {
-    if rtmpStream != nil { return true }
+  private enum CaptureSetupError: LocalizedError {
+    case cameraPermissionDenied
+    case microphonePermissionDenied
+    case cameraUnavailable
+    case microphoneUnavailable
+    case previewDidNotStart
 
-    let connection = RTMPConnection()
-    let stream = RTMPStream(connection: connection)
-    let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
-    let microphone = AVCaptureDevice.default(for: .audio)
-    guard camera != nil, microphone != nil else {
-      emit(type: .error, message: "没有可用的摄像头或麦克风")
-      return false
+    var errorDescription: String? {
+      switch self {
+      case .cameraPermissionDenied:
+        return "未获得摄像头权限"
+      case .microphonePermissionDenied:
+        return "未获得麦克风权限"
+      case .cameraUnavailable:
+        return "没有可用的摄像头"
+      case .microphoneUnavailable:
+        return "没有可用的麦克风"
+      case .previewDidNotStart:
+        return "摄像头会话没有开始输出画面"
+      }
     }
-    usesFrontCamera = true
+  }
 
-    // 与 Android RootEncoder 保持一致：竖屏 720×1280、30fps、2.5Mbps 视频、
-    // 64kbps 音频，关键帧间隔 2 秒。提高视频码率，避免观看端画面出现明显
-    // 的块状模糊；统一编码参数后，SRS 生成 HLS 时两端也更容易对齐。
-    stream.frameRate = 30
-    stream.audioSettings = AudioCodecSettings(bitRate: 64 * 1000)
-    stream.videoSettings = VideoCodecSettings(
-      videoSize: .init(width: 720, height: 1280),
-      profileLevel: kVTProfileLevel_H264_Baseline_3_1 as String,
-      bitRate: 2_500 * 1000,
-      maxKeyFrameIntervalDuration: 2,
-      scalingMode: .trim,
-      bitRateMode: .average,
-      allowFrameReordering: nil,
-      isHardwareEncoderEnabled: true
+  /// 准备采集对象并等待 HaishinKit 的串行配置队列完成。
+  ///
+  /// HaishinKit 的 attachCamera/attachAudio 是异步入队 API。旧实现调用后立即
+  /// 检查 Error，几乎必然检查不到稍后发生的异常，导致 Flutter 误以为预览成功。
+  private func preparePushResources() async throws -> RTMPStream {
+    if let existing = await MainActor.run(body: { rtmpStream }) {
+      return existing
+    }
+
+    guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else {
+      throw CaptureSetupError.cameraPermissionDenied
+    }
+    guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
+      throw CaptureSetupError.microphonePermissionDenied
+    }
+
+    let resources = try await MainActor.run {
+      let audioSession = AVAudioSession.sharedInstance()
+      // HaishinKit 的示例要求 App 自己配置音频会话。此前传入 false 却没有
+      // 配置 session，会在部分 iOS 设备上连带阻塞 AVCaptureSession 启动。
+      try audioSession.setCategory(
+        .playAndRecord,
+        options: [.defaultToSpeaker, .allowBluetooth]
+      )
+      try audioSession.setActive(true)
+
+      guard let camera = AVCaptureDevice.default(
+        .builtInWideAngleCamera,
+        for: .video,
+        position: .front
+      ) else {
+        throw CaptureSetupError.cameraUnavailable
+      }
+      guard let microphone = AVCaptureDevice.default(for: .audio) else {
+        throw CaptureSetupError.microphoneUnavailable
+      }
+
+      let connection = RTMPConnection()
+      let stream = RTMPStream(connection: connection)
+      // 与 Android RootEncoder 保持一致：竖屏 720×1280、30fps、2.5Mbps 视频、
+      // 64kbps 音频，关键帧间隔 2 秒。
+      stream.videoOrientation = .portrait
+      stream.frameRate = 30
+      stream.audioSettings = AudioCodecSettings(bitRate: 64 * 1000)
+      stream.videoSettings = VideoCodecSettings(
+        videoSize: .init(width: 720, height: 1280),
+        profileLevel: kVTProfileLevel_H264_Baseline_3_1 as String,
+        bitRate: 2_500 * 1000,
+        maxKeyFrameIntervalDuration: 2,
+        scalingMode: .trim,
+        bitRateMode: .average,
+        allowFrameReordering: nil,
+        isHardwareEncoderEnabled: true
+      )
+      return (connection, stream, camera, microphone)
+    }
+
+    do {
+      try await attachCamera(resources.2, to: resources.1)
+      try await attachAudio(resources.3, to: resources.1)
+    } catch {
+      resources.1.attachAudio(nil)
+      resources.1.attachCamera(nil)
+      throw error
+    }
+
+    await MainActor.run {
+      rtmpConnection = resources.0
+      rtmpStream = resources.1
+      usesFrontCamera = true
+      bindPublisherView(to: resources.1)
+    }
+    return resources.1
+  }
+
+  /// 将 HaishinKit 的异步 camera 操作串行化。Error 回调和末尾 barrier 都在
+  /// stream.lockQueue 上执行，因此读取 error 时不会遗漏延迟失败。
+  private func attachCamera(_ camera: AVCaptureDevice, to stream: RTMPStream) async throws {
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+      var attachError: Error?
+      stream.attachCamera(camera) { error in
+        attachError = error
+      }
+      stream.lockQueue.async {
+        if let attachError {
+          continuation.resume(throwing: attachError)
+        } else {
+          continuation.resume(returning: ())
+        }
+      }
+    }
+  }
+
+  private func attachAudio(_ microphone: AVCaptureDevice, to stream: RTMPStream) async throws {
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+      var attachError: Error?
+      stream.attachAudio(
+        microphone,
+        automaticallyConfiguresApplicationAudioSession: false
+      ) { error in
+        attachError = error
+      }
+      stream.lockQueue.async {
+        if let attachError {
+          continuation.resume(throwing: attachError)
+        } else {
+          continuation.resume(returning: ())
+        }
+      }
+    }
+  }
+
+  private func bindPublisherView(to stream: RTMPStream) {
+    guard let publisherView else { return }
+    let session = stream.mixer.session
+    if observedCaptureSession !== session {
+      observeCaptureSession(session)
+    }
+    publisherView.setStream(stream)
+  }
+
+  private func observeCaptureSession(_ session: AVCaptureSession) {
+    clearCaptureSessionObservers()
+    observedCaptureSession = session
+    let center = NotificationCenter.default
+
+    captureSessionTokens.append(
+      center.addObserver(
+        forName: .AVCaptureSessionDidStartRunning,
+        object: session,
+        queue: .main
+      ) { [weak self] _ in
+        self?.previewStartTimeout?.cancel()
+        self?.previewStartTimeout = nil
+        self?.emit(type: .previewStarted, message: "iOS 摄像头预览已开始")
+      }
+    )
+    captureSessionTokens.append(
+      center.addObserver(
+        forName: .AVCaptureSessionRuntimeError,
+        object: session,
+        queue: .main
+      ) { [weak self] notification in
+        let error = notification.userInfo?[AVCaptureSessionErrorKey] as? Error
+        self?.emit(
+          type: .error,
+          message: "iOS 摄像头会话异常：\(error?.localizedDescription ?? "未知错误")"
+        )
+      }
+    )
+    captureSessionTokens.append(
+      center.addObserver(
+        forName: .AVCaptureSessionWasInterrupted,
+        object: session,
+        queue: .main
+      ) { [weak self] notification in
+        let reason = notification.userInfo?[AVCaptureSessionInterruptionReasonKey]
+          .map { "（原因：\($0)）" } ?? ""
+        self?.emit(type: .error, message: "iOS 摄像头会话被系统中断\(reason)")
+      }
     )
 
-    var attachError: Error?
-    stream.attachCamera(camera) { error in
-      attachError = error
+    let timeout = DispatchWorkItem { [weak self, weak session] in
+      guard let self, let session, self.observedCaptureSession === session,
+            !session.isRunning
+      else { return }
+      self.emit(type: .error, message: CaptureSetupError.previewDidNotStart.localizedDescription)
     }
-    stream.attachAudio(
-      microphone,
-      automaticallyConfiguresApplicationAudioSession: false
-    ) { error in
-      attachError = error
-    }
-    if let attachError {
-      emit(type: .error, message: "iOS 采集设备初始化失败：\(attachError.localizedDescription)")
-      stream.attachAudio(nil)
-      stream.attachCamera(nil)
-      return false
-    }
+    previewStartTimeout = timeout
+    DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: timeout)
+  }
 
-    rtmpConnection = connection
-    rtmpStream = stream
-    publisherView?.setStream(stream)
-    return true
+  private func clearCaptureSessionObservers() {
+    previewStartTimeout?.cancel()
+    previewStartTimeout = nil
+    for token in captureSessionTokens {
+      NotificationCenter.default.removeObserver(token)
+    }
+    captureSessionTokens.removeAll()
+    observedCaptureSession = nil
   }
 
   private func installPushObservers(on connection: RTMPConnection) {
@@ -442,6 +629,9 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
   }
 
   private func stopPushResources() {
+    // 先解除运行/中断观察，避免主动结束直播触发 didStop 或 detach 后被误判成
+    // 摄像头异常并再次执行 Flutter 侧的失败清理。
+    clearCaptureSessionObservers()
     guard let stream = rtmpStream else { return }
     stream.close()
     stream.attachAudio(nil)

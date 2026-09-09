@@ -157,8 +157,11 @@ final class FlutterLiveMediaEngine implements LiveEngine {
     _ensureUsable();
     final accepted = await _api.startPreview();
     if (!accepted) {
-      _emit(LiveEngineEventType.error, '原生摄像头预览启动失败');
-      return;
+      const message = '原生摄像头预览启动失败';
+      _emit(LiveEngineEventType.error, message);
+      // 开播页必须中止后续的 RTMP 连接并清理刚创建的房间。只发事件但正常
+      // 返回会让 _startBroadcast 继续调用 startPush，最终留下一个黑屏房间。
+      throw StateError(message);
     }
     _emit(LiveEngineEventType.previewRequested, '已发送摄像头预览请求');
   }
@@ -172,8 +175,9 @@ final class FlutterLiveMediaEngine implements LiveEngine {
     }
     final accepted = await _api.startPush(url);
     if (!accepted) {
-      _emit(LiveEngineEventType.error, '原生推流启动失败');
-      return;
+      const message = '原生推流启动失败';
+      _emit(LiveEngineEventType.error, message);
+      throw StateError(message);
     }
     _emit(LiveEngineEventType.pushRequested, '已发送原生推流请求');
   }

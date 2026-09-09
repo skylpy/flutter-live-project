@@ -5,9 +5,15 @@ import '../../data/models/live_room.dart';
 
 /// 两列直播卡片。没有封面地址时使用本地渐变占位，不请求网络图片。
 class LiveRoomCard extends StatelessWidget {
-  const LiveRoomCard({required this.room, required this.onTap, super.key});
+  const LiveRoomCard({
+    required this.room,
+    required this.onTap,
+    this.onAnchorTap,
+    super.key,
+  });
   final LiveRoom room;
   final VoidCallback onTap;
+  final VoidCallback? onAnchorTap;
 
   @override
   Widget build(BuildContext context) {
@@ -101,25 +107,34 @@ class LiveRoomCard extends StatelessWidget {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      CircleAvatar(
-                        radius: 11,
-                        backgroundColor: tokens.primary.withValues(alpha: 0.25),
-                        child: Text(
-                          room.anchorName.isEmpty
-                              ? '?'
-                              : room.anchorName.substring(0, 1),
-                          style: const TextStyle(fontSize: 11),
+                      InkWell(
+                        onTap: onAnchorTap,
+                        borderRadius: BorderRadius.circular(16),
+                        child: CircleAvatar(
+                          radius: 11,
+                          backgroundColor: tokens.primary.withValues(
+                            alpha: 0.25,
+                          ),
+                          child: Text(
+                            room.anchorName.isEmpty
+                                ? '?'
+                                : room.anchorName.substring(0, 1),
+                            style: const TextStyle(fontSize: 11),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 6),
                       Expanded(
-                        child: Text(
-                          room.anchorName.isEmpty ? '匿名主播' : room.anchorName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: tokens.textSecondary,
-                            fontSize: 12,
+                        child: InkWell(
+                          onTap: onAnchorTap,
+                          child: Text(
+                            room.anchorName.isEmpty ? '匿名主播' : room.anchorName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: tokens.textSecondary,
+                              fontSize: 12,
+                            ),
                           ),
                         ),
                       ),

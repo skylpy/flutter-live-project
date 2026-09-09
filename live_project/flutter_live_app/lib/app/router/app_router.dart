@@ -2,13 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/presentation/pages/login_page.dart';
+import '../../features/files/presentation/pages/files_page.dart';
 import '../../features/create_live/presentation/pages/create_live_page.dart';
 import '../../features/create_live/presentation/pages/live_broadcast_page.dart';
 import '../../features/discover/presentation/pages/discover_page.dart';
+import '../../features/discover/presentation/pages/create_post_page.dart';
+import '../../features/discover/presentation/pages/author_feed_page.dart';
+import '../../features/discover/presentation/pages/post_detail_page.dart';
 import '../../features/home/presentation/pages/home_page.dart';
 import '../../features/live/data/models/live_room.dart';
 import '../../features/live/presentation/pages/live_room_page.dart';
 import '../../features/message/presentation/pages/message_page.dart';
+import '../../features/message/presentation/pages/direct_message_page.dart';
 import '../../features/notification/presentation/pages/notification_page.dart';
 import '../../features/search/presentation/pages/search_page.dart';
 import '../../features/following/presentation/pages/following_page.dart';
@@ -85,6 +90,31 @@ final appRouter = GoRouter(
       builder: (context, state) => const CreateLivePage(),
     ),
     GoRoute(
+      path: '/create-post',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const CreatePostPage(),
+    ),
+    GoRoute(
+      path: '/feed/posts/:postId',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) =>
+          PostDetailPage(postId: int.parse(state.pathParameters['postId']!)),
+    ),
+    GoRoute(
+      path: '/feed/users/:userId',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) =>
+          AuthorFeedPage(userId: int.parse(state.pathParameters['userId']!)),
+    ),
+    GoRoute(
+      path: '/messages/:userId',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => DirectMessagePage(
+        otherUserId: int.parse(state.pathParameters['userId']!),
+        otherUserName: state.extra is String ? state.extra! as String : '私信',
+      ),
+    ),
+    GoRoute(
       path: '/live-broadcast/:roomId',
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) {
@@ -101,6 +131,11 @@ final appRouter = GoRouter(
       path: '/settings',
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => const SettingsPage(),
+    ),
+    GoRoute(
+      path: '/files',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const FilesPage(),
     ),
     GoRoute(
       path: '/search',

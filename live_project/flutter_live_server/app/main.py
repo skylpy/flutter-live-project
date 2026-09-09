@@ -23,6 +23,7 @@ from app.core.exceptions import (
     unhandled_exception_handler,
     validation_exception_handler,
 )
+from app.services.oss_service import get_oss_service
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("Database connection check succeeded")
     else:
         logger.warning("Database is unavailable; REST API will start but data endpoints need MySQL")
+    try:
+        get_oss_service().check_configuration()
+    except AppException as exc:
+        logger.error("%s；文件签名接口暂不可用", exc.message)
     yield
 
 

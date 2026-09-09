@@ -50,4 +50,34 @@ class FeedMockRepository implements FeedRepository {
   @override
   Future<FeedInteraction> toggleLike(int postId) async =>
       FeedInteraction(active: false, count: 0);
+
+  @override
+  Future<FeedPost> getPost(int postId) => throw UnimplementedError();
+
+  @override
+  Future<List<FeedComment>> getComments(int postId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<FeedComment> createComment({
+    required int postId,
+    required String body,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> deletePost(int postId) => throw UnimplementedError();
+
+  @override
+  Future<FeedAuthorProfile> getAuthorProfile(int userId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<FeedInteraction> toggleUserFollow(int userId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<FeedPost> createPost({
+    required String body,
+    required List<int> fileIds,
+  }) => throw UnimplementedError('演示数据源不支持发布动态');
 }

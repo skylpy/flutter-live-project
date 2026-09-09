@@ -121,18 +121,22 @@ final class FlutterLiveMediaPublisherViewFactory: NSObject, FlutterPlatformViewF
 
 /// iOS 主播摄像头预览 View。
 ///
-/// HaishinKit 的 HKView 内部使用 AVCaptureVideoPreviewLayer，并且可以直接
-/// attach 同一个 RTMPStream 的 mixer session。这样画面和推流使用同一套采集数据，
-/// 不会因为单独创建预览 session 而重复占用摄像头或造成画面不同步。
+/// 使用 HaishinKit 的 MTHKView 渲染 RTMPStream 输出的视频帧。
+///
+/// HKView 基于 AVCaptureVideoPreviewLayer。它在部分 iOS 设备上切换前后摄像头后
+/// 可能丢失 session 输出，尽管 RTMP 编码器仍在持续推送画面。MTHKView 使用 Metal
+/// 渲染同一条推流帧，因此预览和观看端看到的是同一条视频数据，切换 input 后不会
+/// 依赖旧的 AVCaptureVideoPreviewLayer。
 final class FlutterLiveMediaPublisherView: NSObject, FlutterPlatformView {
-  // HKView 不是 open class，插件不能通过继承扩展它；使用容器组合 HKView，
-  // 同时保留 FlutterPlatformView 所需的稳定 UIView 生命周期。
+  // MTHKView 作为子视图嵌入稳定的 FlutterPlatformView 容器；这样 Flutter
+  // 页面重建时不会重建 RTMPStream 或重新占用摄像头。
   private let containerView: UIView
-  private let previewView: HKView
+  private let previewView: MTHKView
+  private weak var currentStream: RTMPStream?
 
   init(frame: CGRect) {
     containerView = UIView(frame: frame)
-    previewView = HKView(frame: frame)
+    previewView = MTHKView(frame: frame)
     super.init()
 
     containerView.backgroundColor = .black
@@ -148,7 +152,17 @@ final class FlutterLiveMediaPublisherView: NSObject, FlutterPlatformView {
   }
 
   func setStream(_ stream: RTMPStream?) {
-    // detach 时 HKView 会停止 AVCaptureSession；结束直播后可安全释放摄像头。
+    // 切换摄像头时 RTMPStream 不会变。相同 stream 不重复 attach，避免替换
+    // Metal 的 drawable；结束直播传 nil 才真正 detach 并释放摄像头。
+    if let stream, currentStream === stream {
+      previewView.videoOrientation = .portrait
+      return
+    }
+    if stream == nil, currentStream == nil {
+      return
+    }
+    currentStream = stream
+    // detach 时 MTHKView 会解绑 drawable；插件随后关闭 RTMPStream 的采集会话。
     previewView.attachStream(stream)
     previewView.videoOrientation = .portrait
   }

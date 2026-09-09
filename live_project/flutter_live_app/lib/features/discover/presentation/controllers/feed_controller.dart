@@ -33,6 +33,13 @@ class FeedController extends AsyncNotifier<List<FeedPost>> {
     );
   }
 
+  Future<void> refresh() async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(
+      () => ref.read(feedRepositoryProvider).getPosts(_tab),
+    );
+  }
+
   Future<void> toggleLike(int id) async {
     final current = state.asData?.value;
     if (current == null) return;
@@ -54,5 +61,12 @@ class FeedController extends AsyncNotifier<List<FeedPost>> {
       error: (error, stack) => state = AsyncError(error, stack),
       loading: () {},
     );
+  }
+
+  Future<void> deletePost(int id) async {
+    final current = state.asData?.value;
+    if (current == null) return;
+    await ref.read(feedRepositoryProvider).deletePost(id);
+    state = AsyncData(current.where((post) => post.id != id).toList());
   }
 }

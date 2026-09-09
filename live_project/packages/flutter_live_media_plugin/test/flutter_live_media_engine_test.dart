@@ -4,6 +4,13 @@ import 'package:flutter_live_media_plugin/src/generated/live_media_api.g.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FakeLiveMediaHostApi extends LiveMediaHostApi {
+  _FakeLiveMediaHostApi({
+    this.previewAccepted = true,
+    this.pushAccepted = true,
+  });
+
+  final bool previewAccepted;
+  final bool pushAccepted;
   int initializeCalls = 0;
   int playCalls = 0;
   int stopCalls = 0;
@@ -33,13 +40,13 @@ class _FakeLiveMediaHostApi extends LiveMediaHostApi {
   @override
   Future<bool> startPreview() async {
     startPreviewCalls++;
-    return true;
+    return previewAccepted;
   }
 
   @override
   Future<bool> startPush(String url) async {
     startPushCalls++;
-    return true;
+    return pushAccepted;
   }
 
   @override
@@ -84,4 +91,26 @@ void main() {
     await subscription.cancel();
     await engine.dispose();
   });
+
+  test(
+    'engine stops the broadcast flow when native capture setup is rejected',
+    () async {
+      final api = _FakeLiveMediaHostApi(previewAccepted: false);
+      final engine = FlutterLiveMediaEngine(api: api);
+      final events = <LiveEngineEvent>[];
+      final subscription = engine.events.listen(events.add);
+
+      await expectLater(engine.startPreview(), throwsA(isA<StateError>()));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(api.startPreviewCalls, 1);
+      expect(
+        events.map((event) => event.type),
+        contains(LiveEngineEventType.error),
+      );
+
+      await subscription.cancel();
+      await engine.dispose();
+    },
+  );
 }

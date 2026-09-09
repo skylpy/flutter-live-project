@@ -34,6 +34,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.max
 
 private const val PLAYER_VIEW_TYPE = "flutter_live_media_player_view"
 private const val PUBLISHER_VIEW_TYPE = "flutter_live_media_publisher_view"
@@ -528,6 +529,7 @@ private class AndroidLiveMediaPublisherView(
             // TextureView 的 SurfaceTexture 创建晚于 PlatformView；只有此时
             // 才把预览目标交给 RootEncoder，避免页面重建时使用失效纹理。
             engine.attachPublisherTexture(textureView)
+            applyPortraitCenterCrop(width, height)
         }
 
         override fun onSurfaceTextureSizeChanged(
@@ -536,6 +538,7 @@ private class AndroidLiveMediaPublisherView(
             height: Int,
         ) {
             engine.attachPublisherTexture(textureView)
+            applyPortraitCenterCrop(width, height)
         }
 
         override fun onSurfaceTextureDestroyed(surface: android.graphics.SurfaceTexture): Boolean {
@@ -547,11 +550,36 @@ private class AndroidLiveMediaPublisherView(
     }
 
     init {
+        textureView.setBackgroundColor(android.graphics.Color.BLACK)
         textureView.surfaceTextureListener = textureListener
         engine.attachPublisherTexture(textureView)
     }
 
     override fun getView(): View = textureView
+
+    /**
+     * RootEncoder 输出的是 720x1280 竖屏画面，而真机窗口通常是更高的
+     * 9:19.5 比例。TextureView 默认按原始纹理尺寸绘制，会在上下留下黑边；
+     * 用 center-crop 把纹理放大到覆盖整个视图，再从左右裁掉多余部分。
+     */
+    private fun applyPortraitCenterCrop(viewWidth: Int, viewHeight: Int) {
+        if (viewWidth <= 0 || viewHeight <= 0) return
+
+        val sourceWidth = 720f
+        val sourceHeight = 1280f
+        val scale = max(viewWidth / sourceWidth, viewHeight / sourceHeight)
+        val scaledWidth = sourceWidth * scale
+        val scaledHeight = sourceHeight * scale
+
+        val transform = Matrix().apply {
+            setScale(scale, scale)
+            postTranslate(
+                (viewWidth - scaledWidth) / 2f,
+                (viewHeight - scaledHeight) / 2f,
+            )
+        }
+        textureView.setTransform(transform)
+    }
 
     override fun dispose() {
         textureView.surfaceTextureListener = null

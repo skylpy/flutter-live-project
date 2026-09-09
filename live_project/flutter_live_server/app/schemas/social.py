@@ -1,6 +1,26 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class FeedMediaResponse(BaseModel):
+    """一条动态媒体的即时展示信息。URL 不会写入数据库。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    file_id: int = Field(serialization_alias="fileId")
+    media_type: str = Field(serialization_alias="mediaType")
+    url: str
+
+
+class FeedCommentResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: int
+    author_id: int = Field(serialization_alias="authorId")
+    author: str
+    body: str
+    time_label: str = Field(serialization_alias="timeLabel")
 
 
 class FeedPostResponse(BaseModel):
@@ -18,6 +38,39 @@ class FeedPostResponse(BaseModel):
     shares: int
     liked: bool
     media_kind: str = Field(serialization_alias="mediaKind")
+    media: list[FeedMediaResponse] = Field(default_factory=list)
+    comments_preview: list[FeedCommentResponse] = Field(
+        default_factory=list, serialization_alias="commentsPreview"
+    )
+    can_delete: bool = Field(default=False, serialization_alias="canDelete")
+
+
+class CreateFeedPostRequest(BaseModel):
+    """客户端只提交正文和自己已完成上传的文件 ID。"""
+
+    body: str = Field(default="", max_length=2000)
+    file_ids: list[int] = Field(
+        default_factory=list,
+        max_length=9,
+    )
+
+
+class CreateFeedCommentRequest(BaseModel):
+    body: str = Field(min_length=1, max_length=500)
+
+
+class PublicFeedProfileResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: int
+    username: str
+    display_name: str = Field(serialization_alias="displayName")
+    following_count: int = Field(serialization_alias="followingCount")
+    follower_count: int = Field(serialization_alias="followerCount")
+    post_count: int = Field(serialization_alias="postCount")
+    following: bool
+    is_self: bool = Field(serialization_alias="isSelf")
+    posts: list[FeedPostResponse]
 
 
 class ToggleInteractionResponse(BaseModel):
@@ -37,6 +90,26 @@ class MessageConversationResponse(BaseModel):
     preview: str
     time_label: str = Field(serialization_alias="timeLabel")
     unread: int
+
+
+class MessageMediaResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    file_id: int = Field(serialization_alias="fileId")
+    media_type: str = Field(serialization_alias="mediaType")
+    url: str
+
+
+class DirectMessageResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: int
+    sender_id: int = Field(serialization_alias="senderId")
+    recipient_id: int = Field(serialization_alias="recipientId")
+    body: str
+    is_mine: bool = Field(serialization_alias="isMine")
+    time_label: str = Field(serialization_alias="timeLabel")
+    media: list[MessageMediaResponse] = Field(default_factory=list)
 
 
 class NotificationResponse(BaseModel):
@@ -106,14 +179,22 @@ class UpdateProfileRequest(BaseModel):
 class MessageSendRequest(BaseModel):
     """发送私信请求。"""
 
-    recipient_id: int = Field(alias="recipientId", ge=1)
-    body: str = Field(min_length=1, max_length=2000)
+    model_config = ConfigDict(populate_by_name=True)
+
+    recipient_id: int = Field(ge=1)
+    body: str = Field(default="", max_length=2000)
+    file_ids: list[int] = Field(default_factory=list, max_length=9)
 
 
 def format_time_label(value: datetime) -> str:
     """把数据库 UTC 时间转成简单的中文相对时间标签。"""
-    now = datetime.utcnow()
-    seconds = max(0, int((now - value).total_seconds()))
+    now = datetime.now(timezone.utc)
+    source = (
+        value.replace(tzinfo=timezone.utc)
+        if value.tzinfo is None
+        else value.astimezone(timezone.utc)
+    )
+    seconds = max(0, int((now - source).total_seconds()))
     if seconds < 60:
         return "刚刚"
     if seconds < 3600:

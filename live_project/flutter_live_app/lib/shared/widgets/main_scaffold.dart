@@ -61,11 +61,14 @@ class MainScaffold extends StatelessWidget {
                   context.push('/create-live');
                 },
               ),
-              const ListTile(
-                enabled: false,
+              ListTile(
                 leading: CircleAvatar(child: Icon(Icons.edit)),
-                title: Text('发布动态'),
-                subtitle: Text('动态发布功能规划中'),
+                title: const Text('发布动态'),
+                subtitle: const Text('图文或视频动态'),
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/create-post');
+                },
               ),
             ],
           ),

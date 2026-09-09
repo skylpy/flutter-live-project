@@ -11,7 +11,9 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 from app.core.config import settings
 from app.models.base import Base
+from app.models.file import FileRecord  # noqa: F401
 from app.models.live_room import LiveRoom  # noqa: F401 - registers model metadata
+from app.models.social import DirectMessageMedia, FeedComment, FeedPost, FeedPostMedia  # noqa: F401
 from app.models.user import User  # noqa: F401 - registers model metadata
 
 config = context.config

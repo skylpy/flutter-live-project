@@ -10,6 +10,7 @@ def test_live_room_response_uses_flutter_camel_case() -> None:
     room = LiveRoom(
         id=1,
         title="测试直播",
+        anchor_user_id=7,
         anchor_name="主播",
         anchor_avatar="",
         online_count=10,
@@ -24,6 +25,7 @@ def test_live_room_response_uses_flutter_camel_case() -> None:
     payload = LiveRoomResponse.model_validate(room).model_dump(by_alias=True)
 
     assert payload["anchorName"] == "主播"
+    assert payload["anchorUserId"] == 7
     assert payload["onlineCount"] == 10
 
 
@@ -40,9 +42,7 @@ def test_phase4_search_response_uses_flutter_camel_case() -> None:
                 "category": "技术",
             }
         ],
-        posts=[
-            {"id": 3, "author": "Kevin", "body": "测试动态", "time_label": "刚刚"}
-        ],
+        posts=[{"id": 3, "author": "Kevin", "body": "测试动态", "time_label": "刚刚"}],
     ).model_dump(by_alias=True)
 
     assert payload["users"][0]["displayName"] == "Kevin"

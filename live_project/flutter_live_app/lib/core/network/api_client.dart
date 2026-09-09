@@ -41,11 +41,12 @@ class ApiClient {
 
   Future<ApiResponse<T>> get<T>(
     String path, {
+    CancelToken? cancelToken,
     required T Function(Object? value) parseData,
   }) async {
     try {
       // 解析函数由调用方提供，ApiClient 不需要知道每个业务模型的字段。
-      final response = await _dio.get<Object?>(path);
+      final response = await _dio.get<Object?>(path, cancelToken: cancelToken);
       final data = response.data;
       if (data is! Map) {
         throw const ApiException(message: '服务端返回格式不正确');
@@ -63,11 +64,16 @@ class ApiClient {
   Future<ApiResponse<T>> post<T>(
     String path, {
     Object? data,
+    CancelToken? cancelToken,
     required T Function(Object? value) parseData,
   }) async {
     try {
       // POST 与 GET 共用同一套响应格式和异常翻译逻辑。
-      final response = await _dio.post<Object?>(path, data: data);
+      final response = await _dio.post<Object?>(
+        path,
+        data: data,
+        cancelToken: cancelToken,
+      );
       final responseData = response.data;
       if (responseData is! Map) {
         throw const ApiException(message: '服务端返回格式不正确');
@@ -100,6 +106,18 @@ class ApiClient {
       throw await _handleDioException(error);
     } on FormatException {
       throw const ApiException(message: '服务端返回格式不正确');
+    }
+  }
+
+  Future<void> delete(String path) async {
+    try {
+      final response = await _dio.delete<Object?>(path);
+      if (response.data is! Map) {
+        throw const ApiException(message: '服务端返回格式不正确');
+      }
+      _parseResponse<Object?>(response.data as Map, (value) => value);
+    } on DioException catch (error) {
+      throw await _handleDioException(error);
     }
   }
 

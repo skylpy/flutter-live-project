@@ -20,3 +20,8 @@ flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000/api/v1
 ```
 
 当前客户端包含五个 Tab、真实 API 直播列表、详情请求、加载/错误/重试/下拉刷新、登录/注册、JWT Token 持久化及播放器占位 UI；登录后可在直播间连接 WebSocket 发送弹幕。
+
+## 文件管理
+
+登录后进入 **我的 → 我的文件**，支持分类选择、OSS 直传进度/取消、图片查看、下载进度/取消和删除。
+后端配置和验收见 [OSS 文件系统说明](../flutter_live_server/OSS_FILES.md)。Flutter 不配置 OSS AccessKey。

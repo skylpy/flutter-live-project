@@ -41,3 +41,8 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - Swagger：`/docs`
 
 实时通道说明：房间 WebSocket 负责弹幕和在线人数；用户通知 WebSocket 负责私信、关注、点赞和全部已读事件。两条连接都使用 JWT 查询参数，客户端断线后自动指数退避重连。历史通知和消息仍以 MySQL REST 接口为准，Redis 不可用时服务端会退回当前进程内广播。
+
+## OSS 文件上传、下载与删除
+
+已接入 `/api/v1/files`；配置密钥、数据库迁移、Swagger/curl 验收、Flutter 入口和 TODO 见 [OSS_FILES.md](OSS_FILES.md)。
+本地密钥填写本目录 `.env` 的 `OSS_ACCESS_KEY_ID` 和 `OSS_ACCESS_KEY_SECRET`，修改后重启 FastAPI。禁止放入 Flutter。

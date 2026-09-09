@@ -6,6 +6,7 @@ class LiveRoom {
   const LiveRoom({
     required this.id,
     required this.title,
+    this.anchorUserId,
     required this.anchorName,
     required this.anchorAvatar,
     required this.onlineCount,
@@ -24,6 +25,9 @@ class LiveRoom {
 
   final int id;
   final String title;
+
+  /// 主播账号 ID。历史演示房间没有归属账号时为 null，不能猜测跳转对象。
+  final int? anchorUserId;
   final String anchorName;
   final String anchorAvatar;
   final int onlineCount;
@@ -44,6 +48,9 @@ class LiveRoom {
     return LiveRoom(
       id: _int(json['id']),
       title: _string(json['title']),
+      anchorUserId: _nullableInt(
+        json['anchorUserId'] ?? json['anchor_user_id'],
+      ),
       anchorName: _string(json['anchorName'] ?? json['anchor_name']),
       anchorAvatar: _string(json['anchorAvatar'] ?? json['anchor_avatar']),
       onlineCount: _int(json['onlineCount'] ?? json['online_count']),
@@ -66,6 +73,7 @@ class LiveRoom {
     return <String, Object?>{
       'id': id,
       'title': title,
+      'anchorUserId': anchorUserId,
       'anchorName': anchorName,
       'anchorAvatar': anchorAvatar,
       'onlineCount': onlineCount,
@@ -88,6 +96,11 @@ class LiveRoom {
 
   static int _int(Object? value) =>
       value is int ? value : int.tryParse('$value') ?? 0;
+
+  static int? _nullableInt(Object? value) {
+    final parsed = value is int ? value : int.tryParse('$value');
+    return parsed != null && parsed > 0 ? parsed : null;
+  }
 
   static DateTime? _date(Object? value) =>
       DateTime.tryParse(value as String? ?? '');

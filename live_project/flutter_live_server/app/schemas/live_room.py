@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -31,6 +32,10 @@ class LiveRoomResponse(BaseModel):
 
     id: int
     title: str
+    anchor_user_id: Optional[int] = Field(
+        default=None,
+        serialization_alias="anchorUserId",
+    )
     anchor_name: str = Field(serialization_alias="anchorName")
     anchor_avatar: str = Field(serialization_alias="anchorAvatar")
     online_count: int = Field(serialization_alias="onlineCount")

@@ -149,6 +149,12 @@ class ProfilePage extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 10),
+            ListTile(
+              leading: const Icon(Icons.folder_outlined),
+              title: const Text('我的文件'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/files'),
+            ),
             _Row(
               icon: Icons.verified_user_outlined,
               title: '实名认证',

@@ -7,6 +7,7 @@ void main() {
     const room = LiveRoom(
       id: 7,
       title: '测试直播',
+      anchorUserId: 13,
       anchorName: '主播',
       anchorAvatar: '',
       onlineCount: 42,
@@ -22,6 +23,7 @@ void main() {
 
     expect(restored.id, 7);
     expect(restored.anchorName, '主播');
+    expect(restored.anchorUserId, 13);
     expect(restored.onlineCount, 42);
     expect(restored.status, 'living');
     expect(restored.playUrl, endsWith('.m3u8'));

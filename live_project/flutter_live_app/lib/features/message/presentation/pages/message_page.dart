@@ -71,9 +71,15 @@ class MessagePage extends ConsumerWidget {
                   for (final item in items)
                     _Tile(
                       item: item,
-                      onTap: () => ref
-                          .read(messageControllerProvider.notifier)
-                          .markRead(item.userId),
+                      onTap: () {
+                        ref
+                            .read(messageControllerProvider.notifier)
+                            .markRead(item.userId);
+                        context.push(
+                          '/messages/${item.userId}',
+                          extra: item.userName,
+                        );
+                      },
                     ),
               ],
             ),

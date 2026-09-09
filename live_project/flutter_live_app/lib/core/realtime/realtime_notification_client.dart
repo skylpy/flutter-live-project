@@ -20,20 +20,26 @@ class RealtimeNotificationEvent {
     required this.type,
     required this.event,
     this.notification,
+    this.message,
   });
 
   final String type;
   final String event;
   final Map<String, Object?>? notification;
 
+  /// 新私信会携带完整消息，打开中的会话无需轮询也能立即追加。
+  final Map<String, Object?>? message;
+
   factory RealtimeNotificationEvent.fromJson(Map<String, Object?> json) {
     final rawNotification = json['notification'];
+    final rawMessage = json['message'];
     return RealtimeNotificationEvent(
       type: json['type'] as String? ?? 'unknown',
       event: json['event'] as String? ?? '',
       notification: rawNotification is Map
           ? Map<String, Object?>.from(rawNotification)
           : null,
+      message: rawMessage is Map ? Map<String, Object?>.from(rawMessage) : null,
     );
   }
 }

@@ -7,12 +7,17 @@ from app.api.deps_social import get_social_service
 from app.models.user import User
 from app.schemas.common import ApiResponse, success
 from app.schemas.social import (
+    CreateFeedCommentRequest,
+    CreateFeedPostRequest,
+    DirectMessageResponse,
+    FeedCommentResponse,
     FeedPostResponse,
     FollowedUserResponse,
     MessageConversationResponse,
     MessageSendRequest,
     NotificationResponse,
     ProfileResponse,
+    PublicFeedProfileResponse,
     SearchResponse,
     ToggleInteractionResponse,
     UpdateProfileRequest,
@@ -41,6 +46,76 @@ def list_feed_posts(
 ) -> ApiResponse[list[FeedPostResponse]]:
     """返回真实动态列表；关注 Tab 只返回当前用户关注作者的动态。"""
     return success(service.list_posts(tab, user))
+
+
+@router.post("/feed/posts", response_model=ApiResponse[FeedPostResponse], status_code=201)
+def create_feed_post(
+    payload: CreateFeedPostRequest,
+    user: User = Depends(get_current_user),
+    service: SocialService = Depends(get_social_service),
+) -> ApiResponse[FeedPostResponse]:
+    """发布一条动态；附件必须是当前用户已经完成直传的图片或视频。"""
+    return success(service.create_post(payload, user), message="动态已发布")
+
+
+@router.get("/feed/posts/{post_id}", response_model=ApiResponse[FeedPostResponse])
+def get_feed_post(
+    post_id: int = Path(..., ge=1),
+    user: User = Depends(get_current_user),
+    service: SocialService = Depends(get_social_service),
+) -> ApiResponse[FeedPostResponse]:
+    return success(service.get_post(post_id, user))
+
+
+@router.delete("/feed/posts/{post_id}", response_model=ApiResponse[None])
+def delete_feed_post(
+    post_id: int = Path(..., ge=1),
+    user: User = Depends(get_current_user),
+    service: SocialService = Depends(get_social_service),
+) -> ApiResponse[None]:
+    service.delete_post(post_id, user)
+    return success(None, message="动态已删除")
+
+
+@router.get("/feed/posts/{post_id}/comments", response_model=ApiResponse[list[FeedCommentResponse]])
+def list_feed_comments(
+    post_id: int = Path(..., ge=1),
+    user: User = Depends(get_current_user),
+    service: SocialService = Depends(get_social_service),
+) -> ApiResponse[list[FeedCommentResponse]]:
+    return success(service.list_comments(post_id, user))
+
+
+@router.post(
+    "/feed/posts/{post_id}/comments",
+    response_model=ApiResponse[FeedCommentResponse],
+    status_code=201,
+)
+def create_feed_comment(
+    payload: CreateFeedCommentRequest,
+    post_id: int = Path(..., ge=1),
+    user: User = Depends(get_current_user),
+    service: SocialService = Depends(get_social_service),
+) -> ApiResponse[FeedCommentResponse]:
+    return success(service.create_comment(post_id, payload, user), message="评论已发布")
+
+
+@router.get("/feed/users/{user_id}", response_model=ApiResponse[PublicFeedProfileResponse])
+def get_public_feed_profile(
+    user_id: int = Path(..., ge=1),
+    user: User = Depends(get_current_user),
+    service: SocialService = Depends(get_social_service),
+) -> ApiResponse[PublicFeedProfileResponse]:
+    return success(service.public_feed_profile(user_id, user))
+
+
+@router.post("/users/{user_id}/follow", response_model=ApiResponse[ToggleInteractionResponse])
+def toggle_user_follow(
+    user_id: int = Path(..., ge=1),
+    user: User = Depends(get_current_user),
+    service: SocialService = Depends(get_social_service),
+) -> ApiResponse[ToggleInteractionResponse]:
+    return success(service.toggle_user_follow(user_id, user))
 
 
 @router.post("/feed/posts/{post_id}/like", response_model=ApiResponse[ToggleInteractionResponse])
@@ -72,7 +147,9 @@ def update_profile(
     return success(service.update_profile(user, payload.display_name))
 
 
-@router.get("/messages/conversations", response_model=ApiResponse[list[MessageConversationResponse]])
+@router.get(
+    "/messages/conversations", response_model=ApiResponse[list[MessageConversationResponse]]
+)
 def list_conversations(
     user: User = Depends(get_current_user),
     service: SocialService = Depends(get_social_service),
@@ -81,27 +158,49 @@ def list_conversations(
     return success(service.conversations(user))
 
 
-@router.post("/messages", response_model=ApiResponse[dict], status_code=201)
+@router.get(
+    "/messages/conversations/{other_user_id}",
+    response_model=ApiResponse[list[DirectMessageResponse]],
+)
+def get_conversation(
+    other_user_id: int = Path(..., ge=1),
+    user: User = Depends(get_current_user),
+    service: SocialService = Depends(get_social_service),
+) -> ApiResponse[list[DirectMessageResponse]]:
+    """读取一对一会话并将来自对方的消息标记为已读。"""
+    return success(service.conversation(other_user_id, user))
+
+
+@router.post("/messages", response_model=ApiResponse[DirectMessageResponse], status_code=201)
 async def send_message(
     payload: MessageSendRequest,
     user: User = Depends(get_current_user),
     service: SocialService = Depends(get_social_service),
-) -> ApiResponse[dict]:
-    """发送一条私信；具体会话列表通过 GET 重新读取，避免本地状态漂移。"""
+) -> ApiResponse[DirectMessageResponse]:
+    """发送一条私信并将完整消息实时推给接收方。"""
     result = service.send_message(payload, user)
+    # REST 响应面向发送者，而 WebSocket 载荷面向接收者；不能把发送者的
+    # isMine 状态原样推给对方，否则对方会把新消息渲染在错误的一侧。
+    recipient_message = result.model_copy(update={"is_mine": False})
     await user_realtime_hub.publish(
         payload.recipient_id,
         {
             "type": "notification",
             "event": "message",
             "notification": {
-                "id": f"message:{result['id']}",
+                "id": f"message:{result.id}",
                 "type": "互动消息",
                 "title": user.display_name,
-                "body": str(result["body"]),
+                "body": result.body
+                or (
+                    "向你发送了一个视频"
+                    if result.media and result.media[0].media_type == "video"
+                    else "向你发送了一张图片"
+                ),
                 "timeLabel": "刚刚",
                 "unread": True,
             },
+            "message": recipient_message.model_dump(by_alias=True),
             "sentAt": event_time(),
         },
     )

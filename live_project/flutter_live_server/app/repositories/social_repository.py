@@ -1,21 +1,30 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import desc, func, or_, select, update
+from sqlalchemy import and_, delete, desc, func, or_, select, update
 from sqlalchemy.orm import Session
 
+from app.models.file import FileRecord
 from app.models.live_room import LiveRoom
 from app.models.social import (
     DirectMessage,
+    DirectMessageMedia,
+    FeedComment,
     FeedLike,
     FeedPost,
+    FeedPostMedia,
     Follow,
     LiveRoomFollow,
     LiveRoomLike,
 )
 from app.models.user import User
 from app.schemas.social import format_time_label
+
+
+def _utcnow() -> datetime:
+    """数据库沿用无时区 UTC DateTime，避免本地时区混入排序和相对时间。"""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class SocialRepository:
@@ -28,7 +37,7 @@ class SocialRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    def list_posts(self, tab: str, user_id: int) -> list[tuple[FeedPost, User, bool]]:
+    def list_posts(self, tab: str, user_id: int) -> list[tuple]:
         query = (
             select(FeedPost, User)
             .join(User, User.id == FeedPost.author_id)
@@ -38,14 +47,221 @@ class SocialRepository:
             query = query.join(Follow, Follow.followed_id == FeedPost.author_id).where(
                 Follow.follower_id == user_id
             )
-        rows = self.db.execute(query).all()
+        return self._post_rows(self.db.execute(query).all(), user_id)
+
+    def _post_rows(self, rows: list[tuple], user_id: int) -> list[tuple]:
         liked_ids = {
             row.post_id
-            for row in self.db.scalars(
-                select(FeedLike).where(FeedLike.user_id == user_id)
-            )
+            for row in self.db.scalars(select(FeedLike).where(FeedLike.user_id == user_id))
         }
-        return [(post, author, post.id in liked_ids) for post, author in rows]
+        media_by_post = self._media_by_post([post.id for post, _ in rows])
+        comments_by_post = self._comment_preview_by_post([post.id for post, _ in rows])
+        return [
+            (
+                post,
+                author,
+                post.id in liked_ids,
+                media_by_post.get(post.id, []),
+                comments_by_post.get(post.id, []),
+            )
+            for post, author in rows
+        ]
+
+    def _media_by_post(
+        self, post_ids: list[int]
+    ) -> dict[int, list[tuple[FeedPostMedia, FileRecord]]]:
+        if not post_ids:
+            return {}
+        rows = self.db.execute(
+            select(FeedPostMedia, FileRecord)
+            .join(FileRecord, FileRecord.id == FeedPostMedia.file_id)
+            .where(FeedPostMedia.post_id.in_(post_ids))
+            .order_by(FeedPostMedia.sort_order.asc())
+        ).all()
+        result: dict[int, list[tuple[FeedPostMedia, FileRecord]]] = {}
+        for media, file in rows:
+            result.setdefault(media.post_id, []).append((media, file))
+        return result
+
+    def files_by_ids(self, file_ids: list[int]) -> dict[int, FileRecord]:
+        if not file_ids:
+            return {}
+        return {
+            file.id: file
+            for file in self.db.scalars(select(FileRecord).where(FileRecord.id.in_(file_ids)))
+        }
+
+    def create_post(
+        self,
+        *,
+        author_id: int,
+        body: str,
+        media: list[tuple[FileRecord, str]],
+    ) -> FeedPost:
+        media_kind = "none" if not media else media[0][1]
+        post = FeedPost(
+            author_id=author_id,
+            body=body,
+            media_kind=media_kind,
+            likes_count=0,
+            comments_count=0,
+            shares_count=0,
+            created_at=_utcnow(),
+            updated_at=_utcnow(),
+        )
+        self.db.add(post)
+        self.db.flush()
+        for order, (file, media_type) in enumerate(media):
+            self.db.add(
+                FeedPostMedia(
+                    post_id=post.id,
+                    file_id=file.id,
+                    media_type=media_type,
+                    sort_order=order,
+                    created_at=_utcnow(),
+                )
+            )
+        self.db.commit()
+        self.db.refresh(post)
+        return post
+
+    def post_media(self, post_id: int) -> list[tuple[FeedPostMedia, FileRecord]]:
+        return self._media_by_post([post_id]).get(post_id, [])
+
+    def _comment_preview_by_post(
+        self, post_ids: list[int]
+    ) -> dict[int, list[tuple[FeedComment, User]]]:
+        if not post_ids:
+            return {}
+        rows = self.db.execute(
+            select(FeedComment, User)
+            .join(User, User.id == FeedComment.author_id)
+            .where(FeedComment.post_id.in_(post_ids))
+            .order_by(FeedComment.post_id, desc(FeedComment.created_at), desc(FeedComment.id))
+        ).all()
+        grouped: dict[int, list[tuple[FeedComment, User]]] = {}
+        for comment, author in rows:
+            comments = grouped.setdefault(comment.post_id, [])
+            if len(comments) < 3:
+                comments.append((comment, author))
+        for comments in grouped.values():
+            comments.reverse()
+        return grouped
+
+    def get_post(self, post_id: int, user_id: int) -> tuple | None:
+        row = self.db.execute(
+            select(FeedPost, User)
+            .join(User, User.id == FeedPost.author_id)
+            .where(FeedPost.id == post_id)
+        ).first()
+        if row is None:
+            return None
+        return self._post_rows([row], user_id)[0]
+
+    def list_comments(self, post_id: int) -> list[tuple[FeedComment, User]]:
+        return self.db.execute(
+            select(FeedComment, User)
+            .join(User, User.id == FeedComment.author_id)
+            .where(FeedComment.post_id == post_id)
+            .order_by(FeedComment.created_at.asc(), FeedComment.id.asc())
+        ).all()
+
+    def create_comment(self, post: FeedPost, author_id: int, body: str) -> FeedComment:
+        comment = FeedComment(
+            post_id=post.id,
+            author_id=author_id,
+            body=body,
+            created_at=_utcnow(),
+        )
+        self.db.add(comment)
+        post.comments_count += 1
+        post.updated_at = _utcnow()
+        self.db.commit()
+        self.db.refresh(comment)
+        return comment
+
+    def get_public_feed_profile(
+        self, user_id: int, viewer_id: int
+    ) -> tuple[User, dict, list[tuple]] | None:
+        target = self.db.get(User, user_id)
+        if target is None or not target.is_active:
+            return None
+        following_count = (
+            self.db.scalar(
+                select(func.count()).select_from(Follow).where(Follow.follower_id == target.id)
+            )
+            or 0
+        )
+        follower_count = (
+            self.db.scalar(
+                select(func.count()).select_from(Follow).where(Follow.followed_id == target.id)
+            )
+            or 0
+        )
+        post_count = (
+            self.db.scalar(
+                select(func.count()).select_from(FeedPost).where(FeedPost.author_id == target.id)
+            )
+            or 0
+        )
+        following = (
+            self.db.scalar(
+                select(Follow.id).where(
+                    Follow.follower_id == viewer_id, Follow.followed_id == target.id
+                )
+            )
+            is not None
+        )
+        posts = self._post_rows(
+            self.db.execute(
+                select(FeedPost, User)
+                .join(User, User.id == FeedPost.author_id)
+                .where(FeedPost.author_id == target.id)
+                .order_by(desc(FeedPost.created_at))
+            ).all(),
+            viewer_id,
+        )
+        return (
+            target,
+            {
+                "following_count": int(following_count),
+                "follower_count": int(follower_count),
+                "post_count": int(post_count),
+                "following": following,
+            },
+            posts,
+        )
+
+    def toggle_user_follow(self, target: User, viewer_id: int) -> tuple[bool, int]:
+        existing = self.db.scalar(
+            select(Follow).where(Follow.follower_id == viewer_id, Follow.followed_id == target.id)
+        )
+        if existing is None:
+            self.db.add(Follow(follower_id=viewer_id, followed_id=target.id, created_at=_utcnow()))
+            active = True
+        else:
+            self.db.delete(existing)
+            active = False
+        self.db.commit()
+        count = (
+            self.db.scalar(
+                select(func.count()).select_from(Follow).where(Follow.followed_id == target.id)
+            )
+            or 0
+        )
+        return active, int(count)
+
+    def delete_post(self, post: FeedPost, media_files: list[FileRecord]) -> None:
+        for file in media_files:
+            file.status = "deleted"
+            file.deleted_at = file.updated_at = _utcnow()
+        # 数据库生产环境有 ON DELETE CASCADE，但这里显式清理关联关系，保证
+        # SQLite 测试环境和未来的迁移场景都不会留下失效的动态关联记录。
+        self.db.execute(delete(FeedComment).where(FeedComment.post_id == post.id))
+        self.db.execute(delete(FeedLike).where(FeedLike.post_id == post.id))
+        self.db.execute(delete(FeedPostMedia).where(FeedPostMedia.post_id == post.id))
+        self.db.delete(post)
+        self.db.commit()
 
     def toggle_feed_like(self, post_id: int, user_id: int) -> tuple[bool, int]:
         existing = self.db.scalar(
@@ -58,7 +274,7 @@ class SocialRepository:
         if post is None:
             return False, 0
         if existing is None:
-            self.db.add(FeedLike(post_id=post_id, user_id=user_id, created_at=datetime.utcnow()))
+            self.db.add(FeedLike(post_id=post_id, user_id=user_id, created_at=_utcnow()))
             post.likes_count += 1
             active = True
         else:
@@ -69,17 +285,26 @@ class SocialRepository:
         return active, post.likes_count
 
     def get_profile(self, user: User) -> dict[str, int | str]:
-        following = self.db.scalar(
-            select(func.count()).select_from(Follow).where(Follow.follower_id == user.id)
-        ) or 0
-        followers = self.db.scalar(
-            select(func.count()).select_from(Follow).where(Follow.followed_id == user.id)
-        ) or 0
-        liked = self.db.scalar(
-            select(func.coalesce(func.sum(FeedPost.likes_count), 0))
-            .select_from(FeedPost)
-            .where(FeedPost.author_id == user.id)
-        ) or 0
+        following = (
+            self.db.scalar(
+                select(func.count()).select_from(Follow).where(Follow.follower_id == user.id)
+            )
+            or 0
+        )
+        followers = (
+            self.db.scalar(
+                select(func.count()).select_from(Follow).where(Follow.followed_id == user.id)
+            )
+            or 0
+        )
+        liked = (
+            self.db.scalar(
+                select(func.coalesce(func.sum(FeedPost.likes_count), 0))
+                .select_from(FeedPost)
+                .where(FeedPost.author_id == user.id)
+            )
+            or 0
+        )
         return {
             "id": user.id,
             "username": user.username,
@@ -91,7 +316,7 @@ class SocialRepository:
 
     def update_profile(self, user: User, display_name: str) -> User:
         user.display_name = display_name.strip()
-        user.updated_at = datetime.utcnow()
+        user.updated_at = _utcnow()
         self.db.commit()
         self.db.refresh(user)
         return user
@@ -111,20 +336,65 @@ class SocialRepository:
                 unread[other_id] = unread.get(other_id, 0) + 1
         if not latest:
             return []
-        users = {
-            user.id: user
-            for user in self.db.scalars(select(User).where(User.id.in_(latest)))
+        users = {user.id: user for user in self.db.scalars(select(User).where(User.id.in_(latest)))}
+        media_types = {
+            message_id: media_type
+            for message_id, media_type in self.db.execute(
+                select(DirectMessageMedia.message_id, DirectMessageMedia.media_type).where(
+                    DirectMessageMedia.message_id.in_([message.id for message in latest.values()])
+                )
+            )
         }
         return [
             {
                 "user_id": other_id,
                 "user_name": users[other_id].display_name if other_id in users else "用户",
-                "preview": message.body,
-                "time_label": "刚刚",
+                "preview": message.body
+                or ("[视频]" if media_types.get(message.id) == "video" else "[图片]"),
+                "time_label": format_time_label(message.created_at),
                 "unread": unread.get(other_id, 0),
             }
             for other_id, message in latest.items()
         ]
+
+    def list_direct_messages(
+        self, user_id: int, other_user_id: int
+    ) -> list[tuple[DirectMessage, list[tuple[DirectMessageMedia, FileRecord]]]]:
+        messages = self.db.scalars(
+            select(DirectMessage)
+            .where(
+                or_(
+                    and_(
+                        DirectMessage.sender_id == user_id,
+                        DirectMessage.recipient_id == other_user_id,
+                    ),
+                    and_(
+                        DirectMessage.sender_id == other_user_id,
+                        DirectMessage.recipient_id == user_id,
+                    ),
+                )
+            )
+            .order_by(DirectMessage.created_at.asc(), DirectMessage.id.asc())
+            .limit(200)
+        ).all()
+        media_by_message = self._direct_media_by_message([message.id for message in messages])
+        return [(message, media_by_message.get(message.id, [])) for message in messages]
+
+    def _direct_media_by_message(
+        self, message_ids: list[int]
+    ) -> dict[int, list[tuple[DirectMessageMedia, FileRecord]]]:
+        if not message_ids:
+            return {}
+        rows = self.db.execute(
+            select(DirectMessageMedia, FileRecord)
+            .join(FileRecord, FileRecord.id == DirectMessageMedia.file_id)
+            .where(DirectMessageMedia.message_id.in_(message_ids))
+            .order_by(DirectMessageMedia.sort_order.asc())
+        ).all()
+        grouped: dict[int, list[tuple[DirectMessageMedia, FileRecord]]] = {}
+        for link, file in rows:
+            grouped.setdefault(link.message_id, []).append((link, file))
+        return grouped
 
     def mark_conversation_read(self, user_id: int, other_user_id: int) -> None:
         """把对方发给当前用户的消息真正标记为已读。"""
@@ -201,12 +471,16 @@ class SocialRepository:
         self.db.commit()
 
     def list_following(self, user_id: int) -> list[dict[str, int | str]]:
-        rows = self.db.execute(
-            select(User)
-            .join(Follow, Follow.followed_id == User.id)
-            .where(Follow.follower_id == user_id)
-            .order_by(desc(Follow.created_at))
-        ).scalars().all()
+        rows = (
+            self.db.execute(
+                select(User)
+                .join(Follow, Follow.followed_id == User.id)
+                .where(Follow.follower_id == user_id)
+                .order_by(desc(Follow.created_at))
+            )
+            .scalars()
+            .all()
+        )
         return [
             {
                 "id": user.id,
@@ -275,18 +549,38 @@ class SocialRepository:
             ],
         }
 
-    def send_message(self, sender_id: int, recipient_id: int, body: str) -> DirectMessage:
+    def send_message(
+        self,
+        sender_id: int,
+        recipient_id: int,
+        body: str,
+        media: list[tuple[FileRecord, str]],
+    ) -> DirectMessage:
         message = DirectMessage(
             sender_id=sender_id,
             recipient_id=recipient_id,
             body=body.strip(),
             is_read=False,
-            created_at=datetime.utcnow(),
+            created_at=_utcnow(),
         )
         self.db.add(message)
+        self.db.flush()
+        for order, (file, media_type) in enumerate(media):
+            self.db.add(
+                DirectMessageMedia(
+                    message_id=message.id,
+                    file_id=file.id,
+                    media_type=media_type,
+                    sort_order=order,
+                    created_at=_utcnow(),
+                )
+            )
         self.db.commit()
         self.db.refresh(message)
         return message
+
+    def message_media(self, message_id: int) -> list[tuple[DirectMessageMedia, FileRecord]]:
+        return self._direct_media_by_message([message_id]).get(message_id, [])
 
     def toggle_room_follow(self, room_id: int, user_id: int) -> tuple[bool, int]:
         existing = self.db.scalar(
@@ -296,15 +590,20 @@ class SocialRepository:
             )
         )
         if existing is None:
-            self.db.add(LiveRoomFollow(room_id=room_id, user_id=user_id, created_at=datetime.utcnow()))
+            self.db.add(LiveRoomFollow(room_id=room_id, user_id=user_id, created_at=_utcnow()))
             active = True
         else:
             self.db.delete(existing)
             active = False
         self.db.commit()
-        count = self.db.scalar(
-            select(func.count()).select_from(LiveRoomFollow).where(LiveRoomFollow.room_id == room_id)
-        ) or 0
+        count = (
+            self.db.scalar(
+                select(func.count())
+                .select_from(LiveRoomFollow)
+                .where(LiveRoomFollow.room_id == room_id)
+            )
+            or 0
+        )
         return active, int(count)
 
     def toggle_room_like(self, room_id: int, user_id: int) -> tuple[bool, int]:
@@ -315,15 +614,20 @@ class SocialRepository:
             )
         )
         if existing is None:
-            self.db.add(LiveRoomLike(room_id=room_id, user_id=user_id, created_at=datetime.utcnow()))
+            self.db.add(LiveRoomLike(room_id=room_id, user_id=user_id, created_at=_utcnow()))
             active = True
         else:
             self.db.delete(existing)
             active = False
         self.db.commit()
-        count = self.db.scalar(
-            select(func.count()).select_from(LiveRoomLike).where(LiveRoomLike.room_id == room_id)
-        ) or 0
+        count = (
+            self.db.scalar(
+                select(func.count())
+                .select_from(LiveRoomLike)
+                .where(LiveRoomLike.room_id == room_id)
+            )
+            or 0
+        )
         return active, int(count)
 
     def get_room_interaction_state(
@@ -358,11 +662,14 @@ class SocialRepository:
                 )
                 is not None
             )
-        like_count = self.db.scalar(
-            select(func.count()).select_from(LiveRoomLike).where(
-                LiveRoomLike.room_id == room_id
+        like_count = (
+            self.db.scalar(
+                select(func.count())
+                .select_from(LiveRoomLike)
+                .where(LiveRoomLike.room_id == room_id)
             )
-        ) or 0
+            or 0
+        )
         return {
             "following": following,
             "liked": liked,

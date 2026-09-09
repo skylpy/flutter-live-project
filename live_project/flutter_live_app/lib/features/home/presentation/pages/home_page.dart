@@ -141,6 +141,11 @@ class _HomePageState extends ConsumerState<HomePage> {
                       return LiveRoomCard(
                         room: room,
                         onTap: () => context.push('/live-room/${room.id}'),
+                        onAnchorTap: room.anchorUserId == null
+                            ? null
+                            : () => context.push(
+                                '/feed/users/${room.anchorUserId}',
+                              ),
                       );
                     },
                   ),

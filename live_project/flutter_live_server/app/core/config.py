@@ -1,6 +1,8 @@
 from functools import lru_cache
+from pathlib import Path
 from urllib.parse import quote_plus
 
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,8 +44,31 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 10080
 
+    oss_region: str = "oss-cn-shenzhen"
+    oss_endpoint: str = "https://oss-cn-shenzhen.aliyuncs.com"
+    oss_bucket: str = "doc-converter-pdf"
+    oss_pdf_dir: str = "pdf"
+    oss_result_dir: str = "result"
+    oss_source_dir: str = "source"
+    oss_sign_expire: int = Field(default=900, ge=60, le=3600)
+    oss_use_signed_url: bool = True
+    oss_access_key_id: SecretStr = SecretStr("")
+    oss_access_key_secret: SecretStr = SecretStr("")
+    oss_max_sizes: dict[str, int] = Field(
+        default_factory=lambda: {
+            "avatar": 10 * 1024**2,
+            "image": 20 * 1024**2,
+            "pdf": 50 * 1024**2,
+            "document": 50 * 1024**2,
+            "audio": 100 * 1024**2,
+            "video": 500 * 1024**2,
+            "source": 500 * 1024**2,
+            "result": 500 * 1024**2,
+        }
+    )
+
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(Path(__file__).resolve().parents[2] / ".env", ".env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
