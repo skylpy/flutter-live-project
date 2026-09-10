@@ -3,7 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_theme.dart';
 
-/// 主壳保留四个真实 Tab，中央“+”是操作菜单而不是导航分支。
+/// 主壳保留四个真实 Tab；创建入口只在首页右下角显示，避免占用底部导航。
 class MainScaffold extends StatelessWidget {
   const MainScaffold({required this.navigationShell, super.key});
 
@@ -80,16 +80,22 @@ class MainScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AppTheme.tokens(context);
+    final isHome = navigationShell.currentIndex == 0;
     return Scaffold(
       body: navigationShell,
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'main-create-action',
-        onPressed: () => _openCreateMenu(context),
-        backgroundColor: tokens.primary,
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add, size: 30),
-      ),
+      // endFloat 会以 NavigationBar 顶部为基准留出安全间距，不会遮住最右侧的
+      // “我的”Tab，也不会压在首页列表内容上。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: isHome
+          ? FloatingActionButton.extended(
+              heroTag: 'home-create-action',
+              onPressed: () => _openCreateMenu(context),
+              backgroundColor: tokens.primary,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add),
+              label: const Text('创建'),
+            )
+          : null,
       bottomNavigationBar: NavigationBar(
         height: 76,
         selectedIndex: navigationShell.currentIndex,

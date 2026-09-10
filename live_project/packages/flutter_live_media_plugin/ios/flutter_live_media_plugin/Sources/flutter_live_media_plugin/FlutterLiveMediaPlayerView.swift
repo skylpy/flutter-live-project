@@ -121,49 +121,66 @@ final class FlutterLiveMediaPublisherViewFactory: NSObject, FlutterPlatformViewF
 
 /// iOS 主播摄像头预览 View。
 ///
-/// 使用 HaishinKit 的 MTHKView 渲染 RTMPStream 输出的视频帧。
+/// 使用 Metal 渲染 RTMPStream 的编码前处理帧。
 ///
-/// HKView 基于 AVCaptureVideoPreviewLayer。它在部分 iOS 设备上切换前后摄像头后
-/// 可能丢失 session 输出，尽管 RTMP 编码器仍在持续推送画面。MTHKView 使用 Metal
-/// 渲染同一条推流帧，因此预览和观看端看到的是同一条视频数据，切换 input 后不会
-/// 依赖旧的 AVCaptureVideoPreviewLayer。
+/// 隐形 MTHKView 仍负责把 HaishinKit 视频 I/O 固定在 Metal 上；可见视图则接收
+/// `LiveBeautyVideoEffect` 的最终 CIImage。这样主播看到的是将被编码推给观众的
+/// 同一帧，且切换前后摄像头不会重新绑定 AVCaptureVideoPreviewLayer。
 final class FlutterLiveMediaPublisherView: NSObject, FlutterPlatformView {
   // MTHKView 作为子视图嵌入稳定的 FlutterPlatformView 容器；这样 Flutter
   // 页面重建时不会重建 RTMPStream 或重新占用摄像头。
   private let containerView: UIView
-  private let previewView: MTHKView
+  private let metalSynchronizerView: MTHKView
+  private let processedPreviewView: LiveBeautyPreviewMetalView
   private weak var currentStream: RTMPStream?
+  private weak var currentBeautyEffect: LiveBeautyVideoEffect?
 
   init(frame: CGRect) {
     containerView = UIView(frame: frame)
-    previewView = MTHKView(frame: frame)
+    metalSynchronizerView = MTHKView(frame: frame)
+    processedPreviewView = LiveBeautyPreviewMetalView(frame: frame)
     super.init()
 
     containerView.backgroundColor = .black
-    previewView.videoGravity = .resizeAspectFill
-    previewView.videoOrientation = .portrait
-    previewView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-    previewView.frame = containerView.bounds
-    containerView.addSubview(previewView)
+    // MTHKView 会把 stream 的 CIContext 绑定到 Metal；它只作同步器，不能可见，
+    // 否则会把 HaishinKit 原始 sampleBuffer 覆盖在美颜预览之上。
+    metalSynchronizerView.videoGravity = .resizeAspectFill
+    metalSynchronizerView.videoOrientation = .portrait
+    metalSynchronizerView.isHidden = true
+    metalSynchronizerView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    metalSynchronizerView.frame = containerView.bounds
+    processedPreviewView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    processedPreviewView.frame = containerView.bounds
+    containerView.addSubview(metalSynchronizerView)
+    containerView.addSubview(processedPreviewView)
   }
 
   func view() -> UIView {
     containerView
   }
 
-  func setStream(_ stream: RTMPStream?) {
+  func setStream(_ stream: RTMPStream?, beautyEffect: LiveBeautyVideoEffect?) {
     // 切换摄像头时 RTMPStream 不会变。相同 stream 不重复 attach，避免替换
     // Metal 的 drawable；结束直播传 nil 才真正 detach 并释放摄像头。
     if let stream, currentStream === stream {
-      previewView.videoOrientation = .portrait
+      currentBeautyEffect?.previewSink = nil
+      currentBeautyEffect = beautyEffect
+      beautyEffect?.previewSink = processedPreviewView
+      metalSynchronizerView.videoOrientation = .portrait
       return
     }
     if stream == nil, currentStream == nil {
       return
     }
+    currentBeautyEffect?.previewSink = nil
+    currentBeautyEffect = beautyEffect
+    beautyEffect?.previewSink = processedPreviewView
     currentStream = stream
     // detach 时 MTHKView 会解绑 drawable；插件随后关闭 RTMPStream 的采集会话。
-    previewView.attachStream(stream)
-    previewView.videoOrientation = .portrait
+    metalSynchronizerView.attachStream(stream)
+    metalSynchronizerView.videoOrientation = .portrait
+    if stream == nil {
+      processedPreviewView.clear()
+    }
   }
 }

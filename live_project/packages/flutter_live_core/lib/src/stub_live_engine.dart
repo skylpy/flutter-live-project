@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'live_beauty_settings.dart';
 import 'live_engine.dart';
 import 'live_engine_event.dart';
 
@@ -12,6 +13,10 @@ final class StubLiveEngine implements LiveEngine {
       StreamController<LiveEngineEvent>.broadcast();
   bool _initialized = false;
   bool _disposed = false;
+  LiveBeautySettings _beautySettings = const LiveBeautySettings();
+
+  /// 供纯 Dart 验收读取最近一次设置；真实平台由 GPU 管线消费这些参数。
+  LiveBeautySettings get beautySettings => _beautySettings;
 
   @override
   Stream<LiveEngineEvent> get events => _eventController.stream;
@@ -66,6 +71,12 @@ final class StubLiveEngine implements LiveEngine {
     _ensureUsable();
     await initialize();
     _emit(LiveEngineEventType.previewRequested, '已收到切换摄像头请求');
+  }
+
+  @override
+  Future<void> setBeautySettings(LiveBeautySettings settings) async {
+    _ensureUsable();
+    _beautySettings = settings.normalized;
   }
 
   @override

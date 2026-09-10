@@ -194,6 +194,24 @@ final class FlutterLiveMediaEngine implements LiveEngine {
   }
 
   @override
+  Future<void> setBeautySettings(LiveBeautySettings settings) async {
+    _ensureUsable();
+    final normalized = settings.normalized;
+    final accepted = await _api.setBeautySettings(
+      LiveBeautyConfiguration(
+        smoothing: normalized.smoothing,
+        whitening: normalized.whitening,
+        rosiness: normalized.rosiness,
+        faceSlimming: normalized.faceSlimming,
+        filterStrength: normalized.filterStrength,
+      ),
+    );
+    if (!accepted) {
+      _emit(LiveEngineEventType.error, '更新实时美颜参数失败');
+    }
+  }
+
+  @override
   Future<void> stopPush() async {
     _ensureUsable();
     final stopped = await _api.stopPush();

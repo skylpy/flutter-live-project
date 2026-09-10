@@ -54,6 +54,8 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
   bool _isSwitchingCamera = false;
   int _giftRevenue = 0;
   LiveGiftEvent? _activeGift;
+  LiveBeautySettings _beautySettings = const LiveBeautySettings();
+  Timer? _beautyUpdateDebounce;
 
   @override
   void initState() {
@@ -137,6 +139,7 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
 
   @override
   void dispose() {
+    _beautyUpdateDebounce?.cancel();
     _engineSubscription?.cancel();
     _chatSubscription?.cancel();
     unawaited(_chatClient.dispose());
@@ -173,6 +176,9 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
   Future<void> _startBroadcast() async {
     try {
       await _engine.initialize();
+      // 先写入原生链路，再开始采集。这样第一帧主播预览和 RTMP 编码画面就
+      // 使用同一组美颜参数，而不是开播后才突然发生颜色/磨皮跳变。
+      await _engine.setBeautySettings(_beautySettings);
       await _engine.startPreview();
       await _engine.startPush(widget.room.pushUrl);
     } catch (error) {
@@ -311,6 +317,125 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
     }
   }
 
+  void _scheduleBeautyUpdate(LiveBeautySettings settings) {
+    final normalized = settings.normalized;
+    setState(() => _beautySettings = normalized);
+    // Slider 每一帧都会产生值。小幅防抖避免高频 Platform Channel 调用抢占
+    // Camera/GL 线程，同时保持拖动时肉眼可见的实时反馈。
+    _beautyUpdateDebounce?.cancel();
+    _beautyUpdateDebounce = Timer(const Duration(milliseconds: 48), () async {
+      try {
+        await _engine.setBeautySettings(normalized);
+      } catch (error) {
+        if (!mounted) return;
+        setState(() => _status = '美颜参数更新失败：$error');
+      }
+    });
+  }
+
+  Future<void> _showBeautyPanel() {
+    return showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final primary = Theme.of(context).colorScheme.primary;
+            final settings = _beautySettings;
+            void update(LiveBeautySettings next) {
+              _scheduleBeautyUpdate(next);
+              setSheetState(() {});
+            }
+
+            return SafeArea(
+              top: false,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 22),
+                decoration: const BoxDecoration(
+                  color: Color(0xF21A1720),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            '实时美颜',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => update(LiveBeautySettings.disabled),
+                          child: const Text('原图'),
+                        ),
+                      ],
+                    ),
+                    const Text(
+                      '效果会同步到主播预览和观众画面',
+                      style: TextStyle(color: Colors.white60, fontSize: 12),
+                    ),
+                    const SizedBox(height: 10),
+                    _BeautySlider(
+                      label: '磨皮',
+                      value: settings.smoothing,
+                      color: primary,
+                      onChanged: (value) =>
+                          update(settings.copyWith(smoothing: value)),
+                    ),
+                    _BeautySlider(
+                      label: '美白',
+                      value: settings.whitening,
+                      color: primary,
+                      onChanged: (value) =>
+                          update(settings.copyWith(whitening: value)),
+                    ),
+                    _BeautySlider(
+                      label: '红润',
+                      value: settings.rosiness,
+                      color: primary,
+                      onChanged: (value) =>
+                          update(settings.copyWith(rosiness: value)),
+                    ),
+                    _BeautySlider(
+                      label: '瘦脸',
+                      value: settings.faceSlimming,
+                      color: primary,
+                      onChanged: (value) =>
+                          update(settings.copyWith(faceSlimming: value)),
+                    ),
+                    _BeautySlider(
+                      label: '滤镜强度',
+                      value: settings.filterStrength,
+                      color: primary,
+                      onChanged: (value) =>
+                          update(settings.copyWith(filterStrength: value)),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -340,6 +465,7 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
                   context,
                   roomId: widget.room.id.toString(),
                 ),
+                onBeauty: _isStopping ? null : _showBeautyPanel,
                 onSwitchCamera: _isStopping ? null : _switchCamera,
                 onClose: _isStopping ? null : _stopBroadcast,
               ),
@@ -372,6 +498,7 @@ class _BroadcastHeader extends StatelessWidget {
     required this.onlineCount,
     required this.giftRevenue,
     required this.onShowGiftStats,
+    required this.onBeauty,
     required this.onSwitchCamera,
     required this.onClose,
   });
@@ -381,6 +508,7 @@ class _BroadcastHeader extends StatelessWidget {
   final int onlineCount;
   final int giftRevenue;
   final VoidCallback onShowGiftStats;
+  final VoidCallback? onBeauty;
   final VoidCallback? onSwitchCamera;
   final VoidCallback? onClose;
 
@@ -423,6 +551,12 @@ class _BroadcastHeader extends StatelessWidget {
           tooltip: '礼物榜单',
         ),
         IconButton(
+          onPressed: onBeauty,
+          color: Colors.white,
+          icon: const Icon(Icons.auto_awesome_outlined),
+          tooltip: '实时美颜',
+        ),
+        IconButton(
           onPressed: onSwitchCamera,
           color: Colors.white,
           icon: const Icon(Icons.flip_camera_ios_outlined),
@@ -435,6 +569,57 @@ class _BroadcastHeader extends StatelessWidget {
           tooltip: '结束直播',
         ),
       ],
+    );
+  }
+}
+
+class _BeautySlider extends StatelessWidget {
+  const _BeautySlider({
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.onChanged,
+  });
+
+  final String label;
+  final double value;
+  final Color color;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 70,
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+            ),
+          ),
+          Expanded(
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                activeTrackColor: color,
+                thumbColor: color,
+                inactiveTrackColor: Colors.white24,
+                overlayColor: color.withValues(alpha: 0.16),
+              ),
+              child: Slider(value: value, onChanged: onChanged),
+            ),
+          ),
+          SizedBox(
+            width: 38,
+            child: Text(
+              '${(value * 100).round()}',
+              textAlign: TextAlign.end,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

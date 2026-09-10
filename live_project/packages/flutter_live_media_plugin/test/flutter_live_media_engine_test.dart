@@ -4,20 +4,18 @@ import 'package:flutter_live_media_plugin/src/generated/live_media_api.g.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FakeLiveMediaHostApi extends LiveMediaHostApi {
-  _FakeLiveMediaHostApi({
-    this.previewAccepted = true,
-    this.pushAccepted = true,
-  });
+  _FakeLiveMediaHostApi({this.previewAccepted = true});
 
   final bool previewAccepted;
-  final bool pushAccepted;
   int initializeCalls = 0;
   int playCalls = 0;
   int stopCalls = 0;
   int startPreviewCalls = 0;
   int startPushCalls = 0;
   int switchCameraCalls = 0;
+  int setBeautySettingsCalls = 0;
   int stopPushCalls = 0;
+  LiveBeautyConfiguration? lastBeautyConfiguration;
 
   @override
   Future<bool> initialize(LiveEngineConfiguration configuration) async {
@@ -46,12 +44,19 @@ class _FakeLiveMediaHostApi extends LiveMediaHostApi {
   @override
   Future<bool> startPush(String url) async {
     startPushCalls++;
-    return pushAccepted;
+    return true;
   }
 
   @override
   Future<bool> switchCamera() async {
     switchCameraCalls++;
+    return true;
+  }
+
+  @override
+  Future<bool> setBeautySettings(LiveBeautyConfiguration configuration) async {
+    setBeautySettingsCalls++;
+    lastBeautyConfiguration = configuration;
     return true;
   }
 
@@ -110,6 +115,33 @@ void main() {
       );
 
       await subscription.cancel();
+      await engine.dispose();
+    },
+  );
+
+  test(
+    'engine forwards normalized beauty settings to the native GPU pipeline',
+    () async {
+      final api = _FakeLiveMediaHostApi();
+      final engine = FlutterLiveMediaEngine(api: api);
+
+      await engine.setBeautySettings(
+        const LiveBeautySettings(
+          smoothing: 1.2,
+          whitening: 0.35,
+          rosiness: -0.2,
+          faceSlimming: 0.45,
+          filterStrength: 0.6,
+        ),
+      );
+
+      expect(api.setBeautySettingsCalls, 1);
+      expect(api.lastBeautyConfiguration?.smoothing, 1);
+      expect(api.lastBeautyConfiguration?.whitening, 0.35);
+      expect(api.lastBeautyConfiguration?.rosiness, 0);
+      expect(api.lastBeautyConfiguration?.faceSlimming, 0.45);
+      expect(api.lastBeautyConfiguration?.filterStrength, 0.6);
+
       await engine.dispose();
     },
   );

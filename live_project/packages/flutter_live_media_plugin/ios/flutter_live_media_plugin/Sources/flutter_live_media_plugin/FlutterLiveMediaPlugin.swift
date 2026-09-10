@@ -54,6 +54,9 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
   private var usesFrontCamera = true
   private var pushStreamName: String?
   private var pushConnectionURL: String?
+  // 同一个 effect 既接入 HaishinKit 的编码器，也向主播预览交付已处理 CIImage。
+  // 不要在 Flutter 层叠加颜色蒙版，否则观众端会收到未美颜的 RTMP 原始画面。
+  private let beautyEffect = LiveBeautyVideoEffect()
 
   // 采集会话的事件不能只依赖 Flutter 侧“权限已授予”的结果。权限成功后，设备
   // 仍可能被系统中断、被其他 App 占用，或者因为配置失败而没有真正开始运行。
@@ -240,6 +243,13 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
     }
   }
 
+  func setBeautySettings(configuration: LiveBeautyConfiguration) async throws -> Bool {
+    beautyEffect.update(with: configuration)
+    // VideoEffect 保持注册在同一个 RTMPStream 上，更新参数不会重新建
+    // AVCaptureSession、MTHKView 或 RTMP 连接，因此观众端不会中断。
+    return true
+  }
+
   private func beginPlayback(url: URL) -> Bool {
     // 每次首次播放或重连都重新创建 AVPlayerItem 和 AVPlayer。
     // 原因是 AVPlayerItem 失败后继续复用，可能停留在 failed 状态，无法可靠地
@@ -390,6 +400,7 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
     case microphonePermissionDenied
     case cameraUnavailable
     case microphoneUnavailable
+    case beautyEffectUnavailable
     case previewDidNotStart
 
     var errorDescription: String? {
@@ -402,6 +413,8 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
         return "没有可用的摄像头"
       case .microphoneUnavailable:
         return "没有可用的麦克风"
+      case .beautyEffectUnavailable:
+        return "实时美颜 GPU 管线初始化失败"
       case .previewDidNotStart:
         return "摄像头会话没有开始输出画面"
       }
@@ -468,7 +481,11 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
     do {
       try await attachCamera(resources.2, to: resources.1)
       try await attachAudio(resources.3, to: resources.1)
+      guard resources.1.registerVideoEffect(beautyEffect) else {
+        throw CaptureSetupError.beautyEffectUnavailable
+      }
     } catch {
+      _ = resources.1.unregisterVideoEffect(beautyEffect)
       resources.1.attachAudio(nil)
       resources.1.attachCamera(nil)
       throw error
@@ -526,7 +543,7 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
     if observedCaptureSession !== session {
       observeCaptureSession(session)
     }
-    publisherView.setStream(stream)
+    publisherView.setStream(stream, beautyEffect: beautyEffect)
   }
 
   private func observeCaptureSession(_ session: AVCaptureSession) {
@@ -634,9 +651,10 @@ public final class FlutterLiveMediaPlugin: NSObject, FlutterPlugin, LiveMediaHos
     clearCaptureSessionObservers()
     guard let stream = rtmpStream else { return }
     stream.close()
+    _ = stream.unregisterVideoEffect(beautyEffect)
     stream.attachAudio(nil)
     stream.attachCamera(nil)
-    publisherView?.setStream(nil)
+    publisherView?.setStream(nil, beautyEffect: nil)
     rtmpConnection?.close()
     rtmpStream = nil
     rtmpConnection = nil

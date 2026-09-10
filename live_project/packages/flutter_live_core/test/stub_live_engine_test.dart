@@ -10,6 +10,14 @@ void main() {
       final subscription = engine.events.listen(events.add);
 
       await engine.initialize();
+      const beauty = LiveBeautySettings(
+        smoothing: 0.7,
+        whitening: 0.4,
+        rosiness: 0.2,
+        faceSlimming: 0.3,
+        filterStrength: 0.8,
+      );
+      await engine.setBeautySettings(beauty);
       await engine.play('');
       await engine.stop();
       await Future<void>.delayed(Duration.zero);
@@ -22,6 +30,7 @@ void main() {
           LiveEngineEventType.stopped,
         ]),
       );
+      expect(engine.beautySettings, beauty);
 
       await subscription.cancel();
       await engine.dispose();

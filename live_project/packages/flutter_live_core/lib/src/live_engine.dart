@@ -1,4 +1,5 @@
 import 'live_engine_event.dart';
+import 'live_beauty_settings.dart';
 
 /// Flutter 与各平台原生媒体实现共同遵守的“最小协议”。
 ///
@@ -22,6 +23,12 @@ abstract interface class LiveEngine {
 
   /// 在前置和后置摄像头之间切换。主播页只在原生采集已经启动后调用。
   Future<void> switchCamera();
+
+  /// 更新主播端实时美颜参数。
+  ///
+  /// 平台实现必须在编码前处理采集帧；不能只给 Flutter 预览套一层视觉效果，
+  /// 否则观众收到的 RTMP 流会与主播看到的画面不一致。
+  Future<void> setBeautySettings(LiveBeautySettings settings);
 
   /// 停止推流。
   Future<void> stopPush();

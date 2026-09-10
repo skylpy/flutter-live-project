@@ -258,6 +258,63 @@ data class LiveEngineConfiguration (
   }
 }
 
+/**
+ * Flutter 传给原生 GPU 管线的实时美颜参数，所有数值均为 0.0 到 1.0。
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class LiveBeautyConfiguration (
+  val smoothing: Double,
+  val whitening: Double,
+  val rosiness: Double,
+  val faceSlimming: Double,
+  val filterStrength: Double
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): LiveBeautyConfiguration {
+      val smoothing = pigeonVar_list[0] as Double
+      val whitening = pigeonVar_list[1] as Double
+      val rosiness = pigeonVar_list[2] as Double
+      val faceSlimming = pigeonVar_list[3] as Double
+      val filterStrength = pigeonVar_list[4] as Double
+      return LiveBeautyConfiguration(smoothing, whitening, rosiness, faceSlimming, filterStrength)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      smoothing,
+      whitening,
+      rosiness,
+      faceSlimming,
+      filterStrength,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as LiveBeautyConfiguration
+    return LiveMediaApiPigeonUtils.deepEquals(this.smoothing, other.smoothing) && LiveMediaApiPigeonUtils.deepEquals(this.whitening, other.whitening) && LiveMediaApiPigeonUtils.deepEquals(this.rosiness, other.rosiness) && LiveMediaApiPigeonUtils.deepEquals(this.faceSlimming, other.faceSlimming) && LiveMediaApiPigeonUtils.deepEquals(this.filterStrength, other.filterStrength)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + LiveMediaApiPigeonUtils.deepHash(this.smoothing)
+    result = 31 * result + LiveMediaApiPigeonUtils.deepHash(this.whitening)
+    result = 31 * result + LiveMediaApiPigeonUtils.deepHash(this.rosiness)
+    result = 31 * result + LiveMediaApiPigeonUtils.deepHash(this.faceSlimming)
+    result = 31 * result + LiveMediaApiPigeonUtils.deepHash(this.filterStrength)
+    return result
+  }
+  override fun toString(): String {
+    return "LiveBeautyConfiguration(smoothing=$smoothing, whitening=$whitening, rosiness=$rosiness, faceSlimming=$faceSlimming, filterStrength=$filterStrength)"
+  }
+}
+
 /** Generated class from Pigeon that represents data sent in messages. */
 data class LiveMediaEvent (
   val type: LiveMediaEventType,
@@ -317,6 +374,11 @@ private open class LiveMediaApiPigeonCodec : StandardMessageCodec() {
       }
       131.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
+          LiveBeautyConfiguration.fromList(it)
+        }
+      }
+      132.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
           LiveMediaEvent.fromList(it)
         }
       }
@@ -333,8 +395,12 @@ private open class LiveMediaApiPigeonCodec : StandardMessageCodec() {
         stream.write(130)
         writeValue(stream, value.toList())
       }
-      is LiveMediaEvent -> {
+      is LiveBeautyConfiguration -> {
         stream.write(131)
+        writeValue(stream, value.toList())
+      }
+      is LiveMediaEvent -> {
+        stream.write(132)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -351,6 +417,7 @@ interface LiveMediaHostApi {
   suspend fun startPreview(): Boolean
   suspend fun startPush(url: String): Boolean
   suspend fun switchCamera(): Boolean
+  suspend fun setBeautySettings(configuration: LiveBeautyConfiguration): Boolean
   suspend fun stopPush(): Boolean
 
   companion object {
@@ -460,6 +527,25 @@ interface LiveMediaHostApi {
             CoroutineScope(Dispatchers.Main).launch {
               val wrapped: List<Any?> = try {
                 listOf(api.switchCamera())
+              } catch (exception: Throwable) {
+                LiveMediaApiPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.setBeautySettings$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val configurationArg = args[0] as LiveBeautyConfiguration
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.setBeautySettings(configurationArg))
               } catch (exception: Throwable) {
                 LiveMediaApiPigeonUtils.wrapError(exception)
               }

@@ -237,6 +237,63 @@ struct LiveEngineConfiguration: Hashable, CustomStringConvertible {
   }
 }
 
+/// Flutter 传给原生 GPU 管线的实时美颜参数，所有数值均为 0.0 到 1.0。
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct LiveBeautyConfiguration: Hashable, CustomStringConvertible {
+  var smoothing: Double
+  var whitening: Double
+  var rosiness: Double
+  var faceSlimming: Double
+  var filterStrength: Double
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> LiveBeautyConfiguration? {
+    let smoothing = pigeonVar_list[0] as! Double
+    let whitening = pigeonVar_list[1] as! Double
+    let rosiness = pigeonVar_list[2] as! Double
+    let faceSlimming = pigeonVar_list[3] as! Double
+    let filterStrength = pigeonVar_list[4] as! Double
+
+    return LiveBeautyConfiguration(
+      smoothing: smoothing,
+      whitening: whitening,
+      rosiness: rosiness,
+      faceSlimming: faceSlimming,
+      filterStrength: filterStrength
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      smoothing,
+      whitening,
+      rosiness,
+      faceSlimming,
+      filterStrength,
+    ]
+  }
+  static func == (lhs: LiveBeautyConfiguration, rhs: LiveBeautyConfiguration) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return LiveMediaApiPigeonInternal.deepEquals(lhs.smoothing, rhs.smoothing) && LiveMediaApiPigeonInternal.deepEquals(lhs.whitening, rhs.whitening) && LiveMediaApiPigeonInternal.deepEquals(lhs.rosiness, rhs.rosiness) && LiveMediaApiPigeonInternal.deepEquals(lhs.faceSlimming, rhs.faceSlimming) && LiveMediaApiPigeonInternal.deepEquals(lhs.filterStrength, rhs.filterStrength)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("LiveBeautyConfiguration")
+    LiveMediaApiPigeonInternal.deepHash(value: smoothing, hasher: &hasher)
+    LiveMediaApiPigeonInternal.deepHash(value: whitening, hasher: &hasher)
+    LiveMediaApiPigeonInternal.deepHash(value: rosiness, hasher: &hasher)
+    LiveMediaApiPigeonInternal.deepHash(value: faceSlimming, hasher: &hasher)
+    LiveMediaApiPigeonInternal.deepHash(value: filterStrength, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "LiveBeautyConfiguration(smoothing: \(String(describing: smoothing)), whitening: \(String(describing: whitening)), rosiness: \(String(describing: rosiness)), faceSlimming: \(String(describing: faceSlimming)), filterStrength: \(String(describing: filterStrength)))"
+  }
+}
+
 /// Generated class from Pigeon that represents data sent in messages.
 struct LiveMediaEvent: Hashable, CustomStringConvertible {
   var type: LiveMediaEventType
@@ -294,6 +351,8 @@ private class LiveMediaApiPigeonCodecReader: FlutterStandardReader {
     case 130:
       return LiveEngineConfiguration.fromList(self.readValue() as! [Any?])
     case 131:
+      return LiveBeautyConfiguration.fromList(self.readValue() as! [Any?])
+    case 132:
       return LiveMediaEvent.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -309,8 +368,11 @@ private class LiveMediaApiPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? LiveEngineConfiguration {
       super.writeByte(130)
       super.writeValue(value.toList())
-    } else if let value = value as? LiveMediaEvent {
+    } else if let value = value as? LiveBeautyConfiguration {
       super.writeByte(131)
+      super.writeValue(value.toList())
+    } else if let value = value as? LiveMediaEvent {
+      super.writeByte(132)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -341,6 +403,7 @@ protocol LiveMediaHostApi {
   func startPreview() async throws -> Bool
   func startPush(url: String) async throws -> Bool
   func switchCamera() async throws -> Bool
+  func setBeautySettings(configuration: LiveBeautyConfiguration) async throws -> Bool
   func stopPush() async throws -> Bool
 }
 
@@ -445,6 +508,23 @@ class LiveMediaHostApiSetup {
       }
     } else {
       switchCameraChannel.setMessageHandler(nil)
+    }
+    let setBeautySettingsChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.setBeautySettings\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      setBeautySettingsChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let configurationArg = args[0] as! LiveBeautyConfiguration
+        Task { @MainActor in
+          do {
+            let result = try await api.setBeautySettings(configuration: configurationArg)
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      setBeautySettingsChannel.setMessageHandler(nil)
     }
     let stopPushChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.stopPush\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {

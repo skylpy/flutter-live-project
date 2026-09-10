@@ -296,20 +296,30 @@ class FeedPostMediaGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (media.length == 1 && media.single.isVideo) {
-      return _FeedVideo(
-        media: media.single,
-        onOpen: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => MediaViewerPage(media: media),
+      return _SingleFeedMediaFrame(
+        child: _FeedVideo(
+          media: media.single,
+          onOpen: () => Navigator.of(context, rootNavigator: true).push(
+            MaterialPageRoute<void>(
+              builder: (_) => MediaViewerPage(media: media),
+            ),
           ),
         ),
       );
     }
-    final columns = media.length == 1
-        ? 1
-        : media.length == 2
-        ? 2
-        : 3;
+    if (media.length == 1) {
+      return _SingleFeedMediaFrame(
+        child: _FeedImage(
+          media: media.single,
+          onOpen: () => Navigator.of(context, rootNavigator: true).push(
+            MaterialPageRoute<void>(
+              builder: (_) => MediaViewerPage(media: media),
+            ),
+          ),
+        ),
+      );
+    }
+    final columns = media.length == 2 ? 2 : 3;
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -318,11 +328,11 @@ class FeedPostMediaGrid extends StatelessWidget {
         crossAxisCount: columns,
         mainAxisSpacing: 5,
         crossAxisSpacing: 5,
-        childAspectRatio: media.length == 1 ? 1.35 : 1,
+        childAspectRatio: 1,
       ),
       itemBuilder: (context, index) => _FeedImage(
         media: media[index],
-        onOpen: () => Navigator.of(context).push(
+        onOpen: () => Navigator.of(context, rootNavigator: true).push(
           MaterialPageRoute<void>(
             builder: (_) => MediaViewerPage(media: media, initialIndex: index),
           ),
@@ -330,6 +340,22 @@ class FeedPostMediaGrid extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 信息流中的单媒体是“预览”，不是详情页：限制高度后避免竖图或竖视频把一条
+/// 动态撑满屏幕；点击仍会进入无底部 Tab 的原图/原视频详情页。
+class _SingleFeedMediaFrame extends StatelessWidget {
+  const _SingleFeedMediaFrame({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final height = (constraints.maxWidth * 0.67).clamp(188.0, 238.0);
+      return SizedBox(height: height, child: child);
+    },
+  );
 }
 
 class _FeedImage extends StatelessWidget {
@@ -388,38 +414,39 @@ class _FeedVideoState extends State<_FeedVideo> {
 
   @override
   Widget build(BuildContext context) {
-    final aspectRatio = _ready && _controller.value.aspectRatio > 0
-        ? _controller.value.aspectRatio
-        : 16 / 9;
     return InkWell(
       onTap: widget.onOpen,
       borderRadius: BorderRadius.circular(12),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: AspectRatio(
-          aspectRatio: aspectRatio,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              const Positioned.fill(
-                child: ColoredBox(color: Color(0x33000000)),
-              ),
-              if (_ready) VideoPlayer(_controller),
-              IconButton.filled(
-                tooltip: _controller.value.isPlaying ? '暂停视频' : '播放视频',
-                onPressed: !_ready
-                    ? null
-                    : () => setState(() {
-                        _controller.value.isPlaying
-                            ? _controller.pause()
-                            : _controller.play();
-                      }),
-                icon: Icon(
-                  _controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
+        child: Stack(
+          fit: StackFit.expand,
+          alignment: Alignment.center,
+          children: [
+            const ColoredBox(color: Color(0x33000000)),
+            if (_ready)
+              FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: _controller.value.size.width,
+                  height: _controller.value.size.height,
+                  child: VideoPlayer(_controller),
                 ),
               ),
-            ],
-          ),
+            IconButton.filled(
+              tooltip: _controller.value.isPlaying ? '暂停视频' : '播放视频',
+              onPressed: !_ready
+                  ? null
+                  : () => setState(() {
+                      _controller.value.isPlaying
+                          ? _controller.pause()
+                          : _controller.play();
+                    }),
+              icon: Icon(
+                _controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -66,10 +66,49 @@ class _LiveAppState extends ConsumerState<LiveApp> {
     // 登录状态变化时自动建立/关闭用户级通知 WebSocket。
     ref.watch(realtimeNotificationSessionProvider);
     return MaterialApp.router(
-      title: 'Flutter Live',
+      title: '心动直播',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.data(ref.watch(appThemeProvider)),
       routerConfig: appRouter,
+      // Android 12+ 的系统启动页只能展示图标和纯色背景；这里在 Flutter 首帧后
+      // 接续同一张启动图，确保 iOS/Android 均能看到完整的品牌启动画面。
+      builder: (context, child) => _BrandLaunchGate(child: child),
+    );
+  }
+}
+
+class _BrandLaunchGate extends StatefulWidget {
+  const _BrandLaunchGate({required this.child});
+
+  final Widget? child;
+
+  @override
+  State<_BrandLaunchGate> createState() => _BrandLaunchGateState();
+}
+
+class _BrandLaunchGateState extends State<_BrandLaunchGate> {
+  var _showLaunch = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Future<void>.delayed(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _showLaunch = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_showLaunch) return widget.child ?? const SizedBox.shrink();
+    return const ColoredBox(
+      color: Color(0xFF300B35),
+      child: SizedBox.expand(
+        child: Image(
+          image: AssetImage('assets/branding/xindong_live_launch.png'),
+          fit: BoxFit.cover,
+          excludeFromSemantics: true,
+        ),
+      ),
     );
   }
 }

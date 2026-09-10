@@ -21,6 +21,23 @@ class LiveEngineConfiguration {
   bool? enableHardwareAcceleration;
 }
 
+/// Flutter 传给原生 GPU 管线的实时美颜参数，所有数值均为 0.0 到 1.0。
+class LiveBeautyConfiguration {
+  LiveBeautyConfiguration({
+    required this.smoothing,
+    required this.whitening,
+    required this.rosiness,
+    required this.faceSlimming,
+    required this.filterStrength,
+  });
+
+  double smoothing;
+  double whitening;
+  double rosiness;
+  double faceSlimming;
+  double filterStrength;
+}
+
 enum LiveMediaEventType {
   initialized,
   playing,
@@ -65,6 +82,10 @@ abstract class LiveMediaHostApi {
   // Flutter → 原生：切换主播前后摄像头。
   @async
   bool switchCamera();
+
+  // Flutter → 原生：更新编码前 GPU 美颜参数。
+  @async
+  bool setBeautySettings(LiveBeautyConfiguration configuration);
 
   @async
   bool stopPush();

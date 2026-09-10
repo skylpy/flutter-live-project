@@ -10,9 +10,9 @@ import 'package:flutter/services.dart';
 import 'package:meta/meta.dart' show immutable, protected, visibleForTesting;
 
 Object? _extractReplyValueOrThrow(
-    List<Object?>? replyList,
-    String channelName, {
-    required bool isNullValid,
+  List<Object?>? replyList,
+  String channelName, {
+  required bool isNullValid,
 }) {
   if (replyList == null) {
     throw PlatformException(
@@ -34,8 +34,11 @@ Object? _extractReplyValueOrThrow(
   return replyList.firstOrNull;
 }
 
-
-List<Object?> wrapResponse({Object? result, PlatformException? error, bool empty = false}) {
+List<Object?> wrapResponse({
+  Object? result,
+  PlatformException? error,
+  bool empty = false,
+}) {
   if (empty) {
     return <Object?>[];
   }
@@ -44,6 +47,7 @@ List<Object?> wrapResponse({Object? result, PlatformException? error, bool empty
   }
   return <Object?>[error.code, error.message, error.details];
 }
+
 bool _deepEquals(Object? a, Object? b) {
   if (identical(a, b)) {
     return true;
@@ -56,8 +60,9 @@ bool _deepEquals(Object? a, Object? b) {
   }
   if (a is List && b is List) {
     return a.length == b.length &&
-        a.indexed
-            .every(((int, dynamic) item) => _deepEquals(item.$2, b[item.$1]));
+        a.indexed.every(
+          ((int, dynamic) item) => _deepEquals(item.$2, b[item.$1]),
+        );
   }
   if (a is Map && b is Map) {
     if (a.length != b.length) {
@@ -106,7 +111,6 @@ int _deepHash(Object? value) {
   return value.hashCode;
 }
 
-
 enum LiveMediaEventType {
   initialized,
   playing,
@@ -122,20 +126,17 @@ enum LiveMediaEventType {
 }
 
 class LiveEngineConfiguration {
-  LiveEngineConfiguration({
-    this.enableHardwareAcceleration = true,
-  });
+  LiveEngineConfiguration({this.enableHardwareAcceleration = true});
 
   bool? enableHardwareAcceleration;
 
   List<Object?> _toList() {
-    return <Object?>[
-      enableHardwareAcceleration,
-    ];
+    return <Object?>[enableHardwareAcceleration];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static LiveEngineConfiguration decode(Object result) {
     result as List<Object?>;
@@ -153,7 +154,10 @@ class LiveEngineConfiguration {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(enableHardwareAcceleration, other.enableHardwareAcceleration);
+    return _deepEquals(
+      enableHardwareAcceleration,
+      other.enableHardwareAcceleration,
+    );
   }
 
   @override
@@ -166,12 +170,79 @@ class LiveEngineConfiguration {
   }
 }
 
-class LiveMediaEvent {
-  LiveMediaEvent({
-    required this.type,
-    this.message,
-    this.retryCount,
+/// Flutter 传给原生 GPU 管线的实时美颜参数，所有数值均为 0.0 到 1.0。
+class LiveBeautyConfiguration {
+  LiveBeautyConfiguration({
+    required this.smoothing,
+    required this.whitening,
+    required this.rosiness,
+    required this.faceSlimming,
+    required this.filterStrength,
   });
+
+  double smoothing;
+
+  double whitening;
+
+  double rosiness;
+
+  double faceSlimming;
+
+  double filterStrength;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      smoothing,
+      whitening,
+      rosiness,
+      faceSlimming,
+      filterStrength,
+    ];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static LiveBeautyConfiguration decode(Object result) {
+    result as List<Object?>;
+    return LiveBeautyConfiguration(
+      smoothing: result[0]! as double,
+      whitening: result[1]! as double,
+      rosiness: result[2]! as double,
+      faceSlimming: result[3]! as double,
+      filterStrength: result[4]! as double,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! LiveBeautyConfiguration || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(smoothing, other.smoothing) &&
+        _deepEquals(whitening, other.whitening) &&
+        _deepEquals(rosiness, other.rosiness) &&
+        _deepEquals(faceSlimming, other.faceSlimming) &&
+        _deepEquals(filterStrength, other.filterStrength);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'LiveBeautyConfiguration(smoothing: $smoothing, whitening: $whitening, rosiness: $rosiness, faceSlimming: $faceSlimming, filterStrength: $filterStrength)';
+  }
+}
+
+class LiveMediaEvent {
+  LiveMediaEvent({required this.type, this.message, this.retryCount});
 
   LiveMediaEventType type;
 
@@ -180,15 +251,12 @@ class LiveMediaEvent {
   int? retryCount;
 
   List<Object?> _toList() {
-    return <Object?>[
-      type,
-      message,
-      retryCount,
-    ];
+    return <Object?>[type, message, retryCount];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static LiveMediaEvent decode(Object result) {
     result as List<Object?>;
@@ -208,7 +276,9 @@ class LiveMediaEvent {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(type, other.type) && _deepEquals(message, other.message) && _deepEquals(retryCount, other.retryCount);
+    return _deepEquals(type, other.type) &&
+        _deepEquals(message, other.message) &&
+        _deepEquals(retryCount, other.retryCount);
   }
 
   @override
@@ -221,7 +291,6 @@ class LiveMediaEvent {
   }
 }
 
-
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
   @override
@@ -229,14 +298,17 @@ class _PigeonCodec extends StandardMessageCodec {
     if (value is int) {
       buffer.putUint8(4);
       buffer.putInt64(value);
-    }    else if (value is LiveMediaEventType) {
+    } else if (value is LiveMediaEventType) {
       buffer.putUint8(129);
       writeValue(buffer, value.index);
-    }    else if (value is LiveEngineConfiguration) {
+    } else if (value is LiveEngineConfiguration) {
       buffer.putUint8(130);
       writeValue(buffer, value.encode());
-    }    else if (value is LiveMediaEvent) {
+    } else if (value is LiveBeautyConfiguration) {
       buffer.putUint8(131);
+      writeValue(buffer, value.encode());
+    } else if (value is LiveMediaEvent) {
+      buffer.putUint8(132);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -252,6 +324,8 @@ class _PigeonCodec extends StandardMessageCodec {
       case 130:
         return LiveEngineConfiguration.decode(readValue(buffer)!);
       case 131:
+        return LiveBeautyConfiguration.decode(readValue(buffer)!);
+      case 132:
         return LiveMediaEvent.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -263,9 +337,13 @@ class LiveMediaHostApi {
   /// Constructor for [LiveMediaHostApi]. The [binaryMessenger] named argument is
   /// available for dependency injection. If it is left null, the default
   /// BinaryMessenger will be used which routes to the host platform.
-  LiveMediaHostApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
-      : pigeonVar_binaryMessenger = binaryMessenger,
-        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  LiveMediaHostApi({
+    BinaryMessenger? binaryMessenger,
+    String messageChannelSuffix = '',
+  }) : pigeonVar_binaryMessenger = binaryMessenger,
+       pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty
+           ? '.$messageChannelSuffix'
+           : '';
   final BinaryMessenger? pigeonVar_binaryMessenger;
 
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
@@ -273,45 +351,50 @@ class LiveMediaHostApi {
   final String pigeonVar_messageChannelSuffix;
 
   Future<bool> initialize(LiveEngineConfiguration configuration) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.initialize$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.initialize$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[configuration]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[configuration],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as bool;
   }
 
   Future<bool> play(String url) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.play$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.play$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[url]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[url],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as bool;
   }
 
   Future<bool> stop() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.stop$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.stop$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -321,16 +404,16 @@ class LiveMediaHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as bool;
   }
 
   Future<bool> startPreview() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.startPreview$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.startPreview$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -340,35 +423,37 @@ class LiveMediaHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as bool;
   }
 
   Future<bool> startPush(String url) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.startPush$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.startPush$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[url]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[url],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as bool;
   }
 
   Future<bool> switchCamera() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.switchCamera$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.switchCamera$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -378,16 +463,37 @@ class LiveMediaHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as bool;
+  }
+
+  Future<bool> setBeautySettings(LiveBeautyConfiguration configuration) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.setBeautySettings$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[configuration],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as bool;
   }
 
   Future<bool> stopPush() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.stopPush$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaHostApi.stopPush$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -397,11 +503,10 @@ class LiveMediaHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as bool;
   }
 }
@@ -411,12 +516,20 @@ abstract class LiveMediaFlutterApi {
 
   void onEvent(LiveMediaEvent event);
 
-  static void setUp(LiveMediaFlutterApi? api, {BinaryMessenger? binaryMessenger, String messageChannelSuffix = '',}) {
-    messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  static void setUp(
+    LiveMediaFlutterApi? api, {
+    BinaryMessenger? binaryMessenger,
+    String messageChannelSuffix = '',
+  }) {
+    messageChannelSuffix = messageChannelSuffix.isNotEmpty
+        ? '.$messageChannelSuffix'
+        : '';
     {
       final pigeonVar_channel = BasicMessageChannel<Object?>(
-          'dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaFlutterApi.onEvent$messageChannelSuffix', pigeonChannelCodec,
-          binaryMessenger: binaryMessenger);
+        'dev.flutter.pigeon.flutter_live_media_plugin.LiveMediaFlutterApi.onEvent$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
       if (api == null) {
         pigeonVar_channel.setMessageHandler(null);
       } else {
@@ -428,8 +541,10 @@ abstract class LiveMediaFlutterApi {
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
-          }          catch (e) {
-            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
           }
         });
       }

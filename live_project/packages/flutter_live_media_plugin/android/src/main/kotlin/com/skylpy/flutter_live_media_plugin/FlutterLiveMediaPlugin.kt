@@ -21,6 +21,8 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import com.pedro.common.ConnectChecker
 import com.pedro.encoder.input.sources.OrientationForced
+import com.pedro.encoder.input.video.CameraHelper
+import com.pedro.encoder.input.video.facedetector.FaceDetectorCallback
 import com.pedro.encoder.input.sources.video.Camera2Source
 import com.pedro.library.rtmp.RtmpStream
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -107,6 +109,16 @@ private class AndroidLiveMediaEngine(
     private var pushStream: RtmpStream? = null
     private var publisherTexture: TextureView? = null
     private var previewRequested = false
+    private var beautySettings = LiveBeautyConfiguration(
+        smoothing = 0.38,
+        whitening = 0.10,
+        rosiness = 0.08,
+        faceSlimming = 0.25,
+        filterStrength = 0.72,
+    )
+    private var beautyFilter: LiveBeautyFilterRender? = null
+    @Volatile private var faceRegion: FaceRegion? = null
+    private var faceTrackingEnabled = false
 
     init {
         // Player.Listener 是 ExoPlayer 的状态出口。这里只转换状态并发送统一事件，
@@ -241,6 +253,12 @@ private class AndroidLiveMediaEngine(
                 return false
             }
             videoSource.switchCamera()
+            // 不同厂商切换镜头时对 Camera2 人脸检测的保留行为并不一致。显式重新
+            // 注册，保证瘦脸不会停留在旧镜头最后一张脸的位置。
+            faceTrackingEnabled = false
+            faceRegion = null
+            beautyFilter?.clearFaceRegion()
+            enableFaceTracking(stream)
             emit(LiveMediaEventType.PREVIEW_STARTED, "摄像头已切换")
             true
         }.getOrElse { error ->
@@ -250,14 +268,25 @@ private class AndroidLiveMediaEngine(
         }
     }
 
+    override suspend fun setBeautySettings(configuration: LiveBeautyConfiguration): Boolean {
+        beautySettings = configuration.normalized()
+        pushStream?.let(::applyBeautyFilter)
+        // Filter 更新发生在 RootEncoder 的 GL 管线；同一纹理后续会同时进入
+        // TextureView 预览和 MediaCodec，因此无需单独维护一套 Flutter 预览特效。
+        return true
+    }
+
     override suspend fun stopPush(): Boolean {
         // 先停网络推流，再停预览；否则摄像头仍会被编码器占用，下一次开播可能
         // 拿不到 Camera2 资源。这里不影响观众端 ExoPlayer。
         pushStream?.let { stream ->
+            (stream.videoSource as? Camera2Source)?.disableFaceDetection()
             runCatching { stream.stopStream() }
             runCatching { stream.stopPreview() }
         }
         previewRequested = false
+        faceTrackingEnabled = false
+        faceRegion = null
         emit(LiveMediaEventType.PUSH_STOPPED, "Android 推流已停止")
         return true
     }
@@ -332,6 +361,7 @@ private class AndroidLiveMediaEngine(
                     // 再被旋转 90°/270°；竖屏画布和编码宽高仍由 PORTRAIT 模式
                     // 固定为 720x1280。
                     glInterface.setCameraOrientation(0)
+                    applyBeautyFilter(stream)
                     // RootEncoder 的参数顺序是 sampleRate、stereo、bitrate；不能
                     // 按常见的 bitrate、stereo、sampleRate 顺序传递，否则会生成
                     // 64000Hz AAC，部分 Android/Media3 解码器会拒绝这种音频流。
@@ -355,6 +385,98 @@ private class AndroidLiveMediaEngine(
         if (textureView.isAvailable && !stream.isOnPreview) {
             stream.startPreview(textureView)
         }
+        // 预览早已启动、但硬件检测第一次暂不可用时，下一次 UI attach 仍可重试。
+        enableFaceTracking(stream)
+    }
+
+    private fun applyBeautyFilter(stream: RtmpStream) {
+        val settings = beautySettings
+        val nextFilter = LiveBeautyFilterRender().apply {
+            update(
+                smoothing = settings.smoothing.toFloat(),
+                whitening = settings.whitening.toFloat(),
+                rosiness = settings.rosiness.toFloat(),
+                faceSlimming = settings.faceSlimming.toFloat(),
+                filterStrength = settings.filterStrength.toFloat(),
+            )
+            faceRegion?.let { region ->
+                updateFaceRegion(
+                    centerX = region.centerX,
+                    centerY = region.centerY,
+                    radiusX = region.radiusX,
+                    radiusY = region.radiusY,
+                )
+            }
+        }
+        // setFilter 会在 RootEncoder 的 GL 渲染链替换前一个滤镜；切换参数不会
+        // 重启 Camera2、MediaCodec 或 RTMP 连接，观众只会看到平滑的帧级变化。
+        stream.getGlInterface().setFilter(nextFilter)
+        beautyFilter = nextFilter
+    }
+
+    private fun enableFaceTracking(stream: RtmpStream) {
+        if (faceTrackingEnabled) return
+        val source = stream.videoSource as? Camera2Source ?: return
+        // RootEncoder 使用 Camera2 的硬件人脸检测，避免为瘦脸额外复制每一帧
+        // Bitmap 或引入云端/第三方模型。部分低端镜头不支持时会返回 false；那种
+        // 情况保持其他美颜能力，但不会对背景做错误的“全屏瘦脸”形变。
+        faceTrackingEnabled = source.enableFaceDetection(
+            object : FaceDetectorCallback {
+                override fun onGetFaces(
+                    faces: Array<com.pedro.encoder.input.video.facedetector.Face>,
+                    scaleSensor: android.graphics.Rect?,
+                    sensorOrientation: Int,
+                ) {
+                    val primaryFace = faces.maxByOrNull { it.score }
+                    if (primaryFace == null || scaleSensor == null || scaleSensor.width() <= 0 || scaleSensor.height() <= 0) {
+                        faceRegion = null
+                        beautyFilter?.clearFaceRegion()
+                        return
+                    }
+                    val sourceX = (primaryFace.rect.centerX() - scaleSensor.left).toFloat() / scaleSensor.width()
+                    val sourceY = (primaryFace.rect.centerY() - scaleSensor.top).toFloat() / scaleSensor.height()
+                    val sourceRadiusX = primaryFace.rect.width().toFloat() / scaleSensor.width() * 0.62f
+                    val sourceRadiusY = primaryFace.rect.height().toFloat() / scaleSensor.height() * 0.58f
+                    val oriented = orientFaceRegion(
+                        sourceX = sourceX,
+                        sourceY = sourceY,
+                        radiusX = sourceRadiusX,
+                        radiusY = sourceRadiusY,
+                        rotation = sensorOrientation,
+                        mirrored = source.getCameraFacing() == CameraHelper.Facing.FRONT,
+                    )
+                    faceRegion = oriented
+                    beautyFilter?.updateFaceRegion(
+                        centerX = oriented.centerX,
+                        centerY = oriented.centerY,
+                        radiusX = oriented.radiusX,
+                        radiusY = oriented.radiusY,
+                    )
+                }
+            },
+        )
+    }
+
+    private fun orientFaceRegion(
+        sourceX: Float,
+        sourceY: Float,
+        radiusX: Float,
+        radiusY: Float,
+        rotation: Int,
+        mirrored: Boolean,
+    ): FaceRegion {
+        val (rotatedX, rotatedY, rotatedRadiusX, rotatedRadiusY) = when ((rotation % 360 + 360) % 360) {
+            90 -> FaceRegion(sourceY, 1f - sourceX, radiusY, radiusX)
+            180 -> FaceRegion(1f - sourceX, 1f - sourceY, radiusX, radiusY)
+            270 -> FaceRegion(1f - sourceY, sourceX, radiusY, radiusX)
+            else -> FaceRegion(sourceX, sourceY, radiusX, radiusY)
+        }
+        return FaceRegion(
+            centerX = if (mirrored) 1f - rotatedX else rotatedX,
+            centerY = rotatedY,
+            radiusX = rotatedRadiusX.coerceIn(0.08f, 0.46f),
+            radiusY = rotatedRadiusY.coerceIn(0.08f, 0.46f),
+        )
     }
 
     private fun emit(type: LiveMediaEventType, message: String, retryCount: Int? = null) {
@@ -373,9 +495,31 @@ private class AndroidLiveMediaEngine(
         runCatching { pushStream?.stopPreview() }
         runCatching { pushStream?.release() }
         pushStream = null
+        beautyFilter = null
+        faceRegion = null
+        faceTrackingEnabled = false
         player.release()
         eventScope.cancel()
     }
+
+    private fun LiveBeautyConfiguration.normalized(): LiveBeautyConfiguration =
+        LiveBeautyConfiguration(
+            smoothing = smoothing.safeUnitInterval(),
+            whitening = whitening.safeUnitInterval(),
+            rosiness = rosiness.safeUnitInterval(),
+            faceSlimming = faceSlimming.safeUnitInterval(),
+            filterStrength = filterStrength.safeUnitInterval(),
+        )
+
+    private fun Double.safeUnitInterval(): Double =
+        if (!isFinite()) 0.0 else coerceIn(0.0, 1.0)
+
+    private data class FaceRegion(
+        val centerX: Float,
+        val centerY: Float,
+        val radiusX: Float,
+        val radiusY: Float,
+    )
 
     fun attachPublisherTexture(textureView: TextureView) {
         publisherTexture = textureView
