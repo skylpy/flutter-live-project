@@ -12,8 +12,12 @@ import '../../../../core/network/api_provider.dart';
 import '../../../live/data/datasources/live_chat_client.dart';
 import '../../../live/data/models/live_chat_message.dart';
 import '../../../live/data/models/live_room.dart';
+import '../../../live/domain/repositories/live_repository.dart';
 import '../../../live/presentation/controllers/live_list_controller.dart';
 import '../../../live/presentation/widgets/live_danmaku_list.dart';
+import '../../../live/presentation/widgets/live_gift_effect.dart';
+import '../../../live/presentation/widgets/live_gift_stats_sheet.dart';
+import '../../../wallet/presentation/controllers/wallet_controller.dart';
 
 /// 竖屏主播推流页。
 ///
@@ -48,6 +52,8 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
   bool _isStopping = false;
   bool _failureCleanupStarted = false;
   bool _isSwitchingCamera = false;
+  int _giftRevenue = 0;
+  LiveGiftEvent? _activeGift;
 
   @override
   void initState() {
@@ -58,6 +64,7 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
     _chatClient = LiveChatClient();
     _engineSubscription = _engine.events.listen(_onEngineEvent);
     unawaited(_connectChat());
+    unawaited(_loadGiftStats());
 
     // Android Activity 在 Manifest 中固定为竖屏，这里再做一次运行时锁定，
     // 等待系统完成方向切换后才启动摄像头，避免真机仍处于横屏时先创建出
@@ -76,7 +83,11 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
         }
         if (_isPublicLiveMessage(message)) {
           _danmaku.add(message);
-          if (_danmaku.length > 8) _danmaku.removeAt(0);
+          if (_danmaku.length > 120) _danmaku.removeAt(0);
+        }
+        if (message.type == 'gift' && message.gift != null) {
+          _activeGift = message.gift;
+          _giftRevenue = message.gift!.anchorIncome;
         }
       });
     });
@@ -84,6 +95,17 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
       await _chatClient.connect(widget.room.id.toString(), token);
     } catch (_) {
       // 主播仍可继续推流；弹幕连接失败不应影响视频链路。
+    }
+  }
+
+  Future<void> _loadGiftStats() async {
+    try {
+      final stats = await ref
+          .read(walletRepositoryProvider)
+          .getRoomGiftStats(widget.room.id.toString());
+      if (mounted) setState(() => _giftRevenue = stats.totalRevenue);
+    } catch (_) {
+      // 礼物统计失败不能阻断摄像头预览或推流；实时礼物到达时仍会更新收益。
     }
   }
 
@@ -120,7 +142,10 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
     unawaited(_chatClient.dispose());
     // 页面被系统返回手势销毁时兜底停止原生推流。正常点击结束按钮时，
     // _stopBroadcast 已经先完成后端状态同步，这里再次 stopPush 也是幂等的。
-    unawaited(_engine.stopPush());
+    // 用户主动结束时，_finishBroadcastInBackground 已经在后台调用 stopPush。
+    // 不要在页面销毁时再发第二次原生 MethodChannel 请求；iOS 上两次停止
+    // 会串行等待，导致虽然路由已返回，开播页仍出现一段不可操作的停顿。
+    if (!_isStopping) unawaited(_engine.stopPush());
     // Android 在 Manifest 中固定为 portrait；这里不能再传空列表，
     // 否则会把 Activity 恢复成 UNSPECIFIED，系统又可能切回横屏。
     // iOS 没有同样的 Manifest 固定，因此离开主播页后恢复系统默认方向。
@@ -233,34 +258,43 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
     }
   }
 
-  Future<void> _stopBroadcast() async {
+  /// 结束按钮的页面反馈必须立即完成，尤其是 iOS 的原生推流停止需要等待
+  /// AVFoundation 回调时。房间收尾在后台并行执行：停止推流和标记 ended 互不
+  /// 依赖，因此不应让用户在主播页等待两次网络/原生超时。
+  void _stopBroadcast() {
     if (_isStopping) return;
     setState(() {
       _isStopping = true;
       _status = '正在结束直播…';
     });
 
-    await _stopPushSafely();
+    final repository = ref.read(liveRepositoryProvider);
+    final listController = ref.read(liveListControllerProvider.notifier);
+    unawaited(_finishBroadcastInBackground(repository, listController));
+    Navigator.of(context).pop(true);
+  }
+
+  Future<void> _finishBroadcastInBackground(
+    LiveRepository repository,
+    LiveListController listController,
+  ) async {
     try {
-      await ref
-          .read(liveRepositoryProvider)
-          .stopLiveRoom(widget.room.id.toString())
-          .timeout(const Duration(seconds: 5));
-      await ref.read(liveListControllerProvider.notifier).refreshRooms();
-      if (!mounted) return;
-      Navigator.of(context).pop(true);
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _isStopping = false;
-        _status = '推流已停止，但房间状态同步失败：$error';
-      });
+      await Future.wait<void>([
+        _stopPushSafely(),
+        repository
+            .stopLiveRoom(widget.room.id.toString())
+            .timeout(const Duration(seconds: 5)),
+      ]);
+      // CreateLivePage 会在路由返回时立刻刷新一次；这里在服务端真正进入
+      // ended 后再刷新一次，避免首页短暂保留“直播中”的旧卡片。
+      await listController.refreshRooms();
+    } catch (_) {
+      // 页面已即时退出。若本次网络请求异常，服务端的孤儿房间协调任务仍会
+      // 清理推流已结束的房间；不再把用户拉回主播页等待错误提示。
     }
   }
 
-  Future<void> _handleBackNavigation() async {
-    await _stopBroadcast();
-  }
+  void _handleBackNavigation() => _stopBroadcast();
 
   Future<void> _switchCamera() async {
     if (_isSwitchingCamera || _isStopping) return;
@@ -282,7 +316,7 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) unawaited(_handleBackNavigation());
+        if (!didPop) _handleBackNavigation();
       },
       child: Scaffold(
         backgroundColor: Colors.black,
@@ -301,6 +335,11 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
                 room: widget.room,
                 status: _status,
                 onlineCount: _onlineCount,
+                giftRevenue: _giftRevenue,
+                onShowGiftStats: () => showLiveGiftStatsSheet(
+                  context,
+                  roomId: widget.room.id.toString(),
+                ),
                 onSwitchCamera: _isStopping ? null : _switchCamera,
                 onClose: _isStopping ? null : _stopBroadcast,
               ),
@@ -311,6 +350,8 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
               bottom: MediaQuery.paddingOf(context).bottom + 28,
               child: IgnorePointer(child: LiveDanmakuList(messages: _danmaku)),
             ),
+            // 高价值礼物使用整屏舞台层；该层忽略触摸，主播仍可切换摄像头或结束。
+            Positioned.fill(child: LiveGiftEffect(gift: _activeGift)),
           ],
         ),
       ),
@@ -321,13 +362,16 @@ class _LiveBroadcastPageState extends ConsumerState<LiveBroadcastPage> {
 bool _isPublicLiveMessage(LiveChatMessage message) =>
     message.type == 'chat' ||
     message.type == 'presence' ||
-    message.type == 'system';
+    message.type == 'system' ||
+    message.type == 'gift';
 
 class _BroadcastHeader extends StatelessWidget {
   const _BroadcastHeader({
     required this.room,
     required this.status,
     required this.onlineCount,
+    required this.giftRevenue,
+    required this.onShowGiftStats,
     required this.onSwitchCamera,
     required this.onClose,
   });
@@ -335,6 +379,8 @@ class _BroadcastHeader extends StatelessWidget {
   final LiveRoom room;
   final String status;
   final int onlineCount;
+  final int giftRevenue;
+  final VoidCallback onShowGiftStats;
   final VoidCallback? onSwitchCamera;
   final VoidCallback? onClose;
 
@@ -364,11 +410,17 @@ class _BroadcastHeader extends StatelessWidget {
                 ),
               ),
               Text(
-                '$status · $onlineCount 人在线',
+                '$status · $onlineCount 人在线 · 收益 $giftRevenue',
                 style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
             ],
           ),
+        ),
+        IconButton(
+          onPressed: onShowGiftStats,
+          color: Colors.white,
+          icon: const Icon(Icons.emoji_events_outlined),
+          tooltip: '礼物榜单',
         ),
         IconButton(
           onPressed: onSwitchCamera,

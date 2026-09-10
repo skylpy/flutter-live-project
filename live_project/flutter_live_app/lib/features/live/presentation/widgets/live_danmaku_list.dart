@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_theme.dart';
 import '../../data/models/live_chat_message.dart';
 
 /// 直播间内主播和观众共用的实时弹幕叠加层。
@@ -63,11 +64,14 @@ class _LiveDanmakuListState extends State<LiveDanmakuList> {
             return Align(
               alignment: Alignment.centerLeft,
               child: _LiveDanmakuLine(
-                name: item.type == 'chat' ? item.userName : '',
+                name: item.type == 'chat' || item.type == 'gift'
+                    ? item.userName
+                    : '',
                 message: item.message.isNotEmpty
                     ? item.message
                     : '${item.userName}${item.event == 'joined' ? '进入直播间' : '离开直播间'}',
-                system: item.type != 'chat',
+                system: item.type != 'chat' && item.type != 'gift',
+                gift: item.type == 'gift',
               ),
             );
           },
@@ -82,14 +86,17 @@ class _LiveDanmakuLine extends StatelessWidget {
     required this.name,
     required this.message,
     required this.system,
+    required this.gift,
   });
 
   final String name;
   final String message;
   final bool system;
+  final bool gift;
 
   @override
   Widget build(BuildContext context) {
+    final themePrimary = AppTheme.tokens(context).primary;
     return Padding(
       padding: const EdgeInsets.only(bottom: 5),
       child: DecoratedBox(
@@ -99,13 +106,36 @@ class _LiveDanmakuLine extends StatelessWidget {
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-          child: Text(
-            system ? message : '$name：$message',
-            style: TextStyle(
-              color: system ? Colors.white70 : Colors.white,
-              fontSize: 12,
-            ),
-          ),
+          child: system
+              ? Text(
+                  message,
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                )
+              : Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '$name：',
+                        // 昵称随 App 当前主题变色；礼物内容仍以金色突出。
+                        style: TextStyle(
+                          color: themePrimary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      TextSpan(
+                        text: message,
+                        style: TextStyle(
+                          color: gift ? const Color(0xffffd86a) : Colors.white,
+                          fontSize: 12,
+                          fontWeight: gift
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
         ),
       ),
     );

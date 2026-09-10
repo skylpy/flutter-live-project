@@ -8,8 +8,10 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.repositories.live_room_repository import LiveRoomRepository
 from app.repositories.user_repository import UserRepository
+from app.repositories.wallet_repository import WalletRepository
 from app.services.auth_service import AuthService
 from app.services.live_room_service import LiveRoomService
+from app.services.wallet_service import WalletService
 
 # HTTPBearer 只负责读取 Authorization；Token 的签名校验在 get_current_user 完成。
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -23,6 +25,11 @@ def get_live_room_service(db: Session = Depends(get_db)) -> LiveRoomService:
 def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
     """组装认证 Service，避免路由自己管理数据库对象。"""
     return AuthService(UserRepository(db))
+
+
+def get_wallet_service(db: Session = Depends(get_db)) -> WalletService:
+    """组装钱包服务；余额写入必须经过该 Service 和 Repository。"""
+    return WalletService(WalletRepository(db))
 
 
 def get_current_user(

@@ -14,6 +14,9 @@ import '../../../../core/media/live_engine_provider.dart';
 import '../controllers/live_room_controller.dart';
 import '../controllers/live_list_controller.dart';
 import '../widgets/live_danmaku_list.dart';
+import '../widgets/live_gift_effect.dart';
+import '../widgets/live_gift_sheet.dart';
+import '../widgets/live_gift_stats_sheet.dart';
 import '../widgets/live_room_player.dart';
 
 /// 全屏直播间页面。
@@ -70,6 +73,7 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
   int _onlineCount = 0;
   int _heartBurstSeed = 0;
   bool _roomEnded = false;
+  LiveGiftEvent? _activeGift;
 
   @override
   void initState() {
@@ -139,6 +143,9 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
         // 只限制内存中的历史长度，显示层会用固定高度窗口展示最近几条，
         // 用户仍可向上滚动查看更早的公屏消息。
         if (_danmaku.length > 120) _danmaku.removeAt(0);
+      }
+      if (message.type == 'gift' && message.gift != null) {
+        _activeGift = message.gift;
       }
     });
   }
@@ -228,6 +235,9 @@ class _LiveRoomContentState extends ConsumerState<_LiveRoomContent> {
             child: _FloatingHeartOverlay(burstSeed: _heartBurstSeed),
           ),
         ),
+        // 礼物层拥有整个直播画面：普通礼物只占局部，高级礼物可以使用
+        // 近全屏舞台效果。组件自身 IgnorePointer，不会挡住评论和点赞操作。
+        Positioned.fill(child: LiveGiftEffect(gift: _activeGift)),
         AnimatedPositioned(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOut,
@@ -383,7 +393,8 @@ class _FloatingHeart {
 bool _isPublicLiveMessage(LiveChatMessage message) =>
     message.type == 'chat' ||
     message.type == 'presence' ||
-    message.type == 'system';
+    message.type == 'system' ||
+    message.type == 'gift';
 
 class _RoomHeader extends StatelessWidget {
   const _RoomHeader({
@@ -638,7 +649,7 @@ class _RoomInputBarState extends ConsumerState<_RoomInputBar> {
                   ),
                 ] else ...[
                   IconButton(
-                    onPressed: () => _showAction('礼物功能即将开放'),
+                    onPressed: _openGiftSheet,
                     color: Colors.white,
                     icon: const Icon(Icons.card_giftcard),
                     tooltip: '送礼物',
@@ -650,10 +661,10 @@ class _RoomInputBarState extends ConsumerState<_RoomInputBar> {
                     tooltip: '分享直播间',
                   ),
                   IconButton(
-                    onPressed: () => _showAction('更多功能即将开放'),
+                    onPressed: _openGiftStats,
                     color: Colors.white,
-                    icon: const Icon(Icons.more_horiz),
-                    tooltip: '更多',
+                    icon: const Icon(Icons.emoji_events_outlined),
+                    tooltip: '礼物榜单',
                   ),
                   IconButton(
                     onPressed: widget.onLike,
@@ -754,6 +765,15 @@ class _RoomInputBarState extends ConsumerState<_RoomInputBar> {
         ),
       );
   }
+
+  Future<void> _openGiftSheet() async {
+    final receipt = await showLiveGiftSheet(context, roomId: widget.roomId);
+    if (!mounted || receipt == null) return;
+    _showAction('已送出 ${receipt.giftName} × ${receipt.quantity}');
+  }
+
+  Future<void> _openGiftStats() =>
+      showLiveGiftStatsSheet(context, roomId: widget.roomId);
 }
 
 class _QuickChatAction extends StatelessWidget {

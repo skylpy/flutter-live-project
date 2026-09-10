@@ -74,6 +74,14 @@ class _CreateLivePageState extends ConsumerState<CreateLivePage> {
         throw StateError('服务端没有返回推流地址');
       }
 
+      // 一旦房间创建成功，开播表单不再需要维持“正在准备”的禁用状态。
+      // 主播页位于根路由栈上，用户结束直播返回本页时就能立刻再次开播或
+      // 切换 Tab，不必等待主播页的原生媒体资源释放完毕。
+      setState(() {
+        _isStarting = false;
+        _status = '主播控制台已打开';
+      });
+
       // 使用根 Navigator 打开主播控制台，因此进入下一页后隐藏底部五个 Tab。
       // room 作为路由 extra 传递，避免第二页重复请求并保证使用本次创建的 pushUrl。
       await context.push(
@@ -83,7 +91,6 @@ class _CreateLivePageState extends ConsumerState<CreateLivePage> {
       if (!mounted) return;
       ref.invalidate(liveListControllerProvider);
       setState(() {
-        _isStarting = false;
         _status = '直播已结束，可以再次开播';
       });
     } catch (error) {

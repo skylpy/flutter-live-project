@@ -78,7 +78,7 @@ class RoomRealtimeHub:
         message = json.dumps(payload, ensure_ascii=False)
         try:
             await get_async_redis().publish(self._channel(room_id), message)
-        except RedisError:
+        except (RedisError, RuntimeError):
             await self.broadcast_local(room_id, payload)
 
     async def relay(self, websocket: WebSocket, pubsub: PubSub) -> None:
@@ -148,7 +148,7 @@ class UserRealtimeHub:
         message = json.dumps(payload, ensure_ascii=False)
         try:
             await get_async_redis().publish(self._channel(user_id), message)
-        except RedisError:
+        except (RedisError, RuntimeError):
             await self.broadcast_local(user_id, payload)
 
     async def relay(self, websocket: WebSocket, pubsub: PubSub) -> None:

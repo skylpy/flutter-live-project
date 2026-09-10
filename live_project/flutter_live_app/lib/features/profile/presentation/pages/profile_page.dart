@@ -136,15 +136,19 @@ class ProfilePage extends ConsumerWidget {
                 crossAxisCount: 4,
                 childAspectRatio: 0.95,
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                children: const [
-                  _Shortcut(Icons.account_balance_wallet_outlined, '我的钱包'),
-                  _Shortcut(Icons.emoji_events_outlined, '我的等级'),
-                  _Shortcut(Icons.people_outline, '我的粉丝'),
-                  _Shortcut(Icons.workspace_premium_outlined, '我的贵族'),
-                  _Shortcut(Icons.auto_awesome_outlined, '我的动态'),
-                  _Shortcut(Icons.history, '历史记录'),
-                  _Shortcut(Icons.star_border, '我的收藏'),
-                  _Shortcut(Icons.person_search_outlined, '我的访客'),
+                children: [
+                  _Shortcut(
+                    Icons.account_balance_wallet_outlined,
+                    '我的钱包',
+                    onTap: () => context.push('/wallet'),
+                  ),
+                  const _Shortcut(Icons.emoji_events_outlined, '我的等级'),
+                  const _Shortcut(Icons.people_outline, '我的粉丝'),
+                  const _Shortcut(Icons.workspace_premium_outlined, '我的贵族'),
+                  const _Shortcut(Icons.auto_awesome_outlined, '我的动态'),
+                  const _Shortcut(Icons.history, '历史记录'),
+                  const _Shortcut(Icons.star_border, '我的收藏'),
+                  const _Shortcut(Icons.person_search_outlined, '我的访客'),
                 ],
               ),
             ),
@@ -211,21 +215,26 @@ class _Stat extends StatelessWidget {
 }
 
 class _Shortcut extends StatelessWidget {
-  const _Shortcut(this.icon, this.label);
+  const _Shortcut(this.icon, this.label, {this.onTap});
   final IconData icon;
   final String label;
+  final VoidCallback? onTap;
   @override
-  Widget build(BuildContext context) => Column(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      Icon(icon, color: AppTheme.tokens(context).primary),
-      const SizedBox(height: 5),
-      Text(
-        label,
-        textAlign: TextAlign.center,
-        style: const TextStyle(fontSize: 11),
-      ),
-    ],
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(12),
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(icon, color: AppTheme.tokens(context).primary),
+        const SizedBox(height: 5),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 11),
+        ),
+      ],
+    ),
   );
 }
 

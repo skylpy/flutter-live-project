@@ -19,6 +19,7 @@ import '../../features/search/presentation/pages/search_page.dart';
 import '../../features/following/presentation/pages/following_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
 import '../../features/profile/presentation/pages/settings_page.dart';
+import '../../features/wallet/presentation/pages/wallet_page.dart';
 import '../../shared/widgets/main_scaffold.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
@@ -136,6 +137,11 @@ final appRouter = GoRouter(
       path: '/files',
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => const FilesPage(),
+    ),
+    GoRoute(
+      path: '/wallet',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const WalletPage(),
     ),
     GoRoute(
       path: '/search',
