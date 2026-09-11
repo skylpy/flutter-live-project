@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import (
     BigInteger,
@@ -53,16 +54,19 @@ class FeedPostMedia(Base):
     post_id: Mapped[int] = mapped_column(
         ForeignKey("feed_posts.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    file_id: Mapped[int] = mapped_column(
-        ForeignKey("file_records.id", ondelete="RESTRICT"), nullable=False, unique=True
+    file_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("file_records.id", ondelete="RESTRICT"), nullable=True, unique=True
     )
+    # 虚拟居民的项目内媒体库不经过用户上传/OSS 签名，使用受控的相对静态地址。
+    # 二者至少有一个存在；用户动态仍只允许使用 file_id。
+    source_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     media_type: Mapped[str] = mapped_column(String(10), nullable=False)
     sort_order: Mapped[int] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
 class FeedComment(Base):
-    """动态的一级公开评论；回复线程可在后续按 parent_id 扩展。"""
+    """动态公开评论；``parent_id`` 指向同一动态中的被回复评论。"""
 
     __tablename__ = "feed_comments"
 
@@ -74,6 +78,9 @@ class FeedComment(Base):
     )
     author_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    parent_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("feed_comments.id", ondelete="CASCADE"), nullable=True, index=True
     )
     body: Mapped[str] = mapped_column(String(500), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

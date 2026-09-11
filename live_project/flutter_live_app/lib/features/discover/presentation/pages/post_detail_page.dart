@@ -25,6 +25,7 @@ class _PostDetailPageState extends ConsumerState<PostDetailPage> {
   Object? _error;
   bool _loading = true;
   bool _sending = false;
+  FeedComment? _replyingTo;
 
   @override
   void initState() {
@@ -69,12 +70,17 @@ class _PostDetailPageState extends ConsumerState<PostDetailPage> {
     try {
       final comment = await ref
           .read(feedRepositoryProvider)
-          .createComment(postId: widget.postId, body: body);
+          .createComment(
+            postId: widget.postId,
+            body: body,
+            parentId: _replyingTo?.id,
+          );
       if (!mounted) return;
       setState(() {
         _comments = [..._comments, comment];
         _post = _post?.copyWith(comments: _post!.comments + 1);
         _commentController.clear();
+        _replyingTo = null;
       });
     } on ApiException catch (error) {
       _show(error.message);
@@ -199,6 +205,7 @@ class _PostDetailPageState extends ConsumerState<PostDetailPage> {
             else
               for (final comment in _comments)
                 ListTile(
+                  onTap: () => setState(() => _replyingTo = comment),
                   contentPadding: EdgeInsets.zero,
                   leading: InkWell(
                     onTap: () =>
@@ -211,11 +218,29 @@ class _PostDetailPageState extends ConsumerState<PostDetailPage> {
                       ),
                     ),
                   ),
-                  title: Text(
-                    comment.author,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  title: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          comment.author,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      if (comment.isVirtual) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          '虚拟居民',
+                          style: TextStyle(color: tokens.primary, fontSize: 11),
+                        ),
+                      ],
+                    ],
                   ),
-                  subtitle: Text(comment.body),
+                  subtitle: Text(
+                    comment.replyToAuthor == null
+                        ? comment.body
+                        : '回复 ${comment.replyToAuthor}：${comment.body}',
+                  ),
                   trailing: Text(
                     comment.timeLabel,
                     style: TextStyle(color: tokens.textSecondary, fontSize: 11),
@@ -228,25 +253,46 @@ class _PostDetailPageState extends ConsumerState<PostDetailPage> {
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: TextField(
-                  controller: _commentController,
-                  maxLength: 500,
-                  onSubmitted: (_) => _sendComment(),
-                  decoration: const InputDecoration(
-                    counterText: '',
-                    hintText: '写下你的评论…',
-                    isDense: true,
-                    border: OutlineInputBorder(),
+              if (_replyingTo != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text('回复 ${_replyingTo!.author}')),
+                      IconButton(
+                        tooltip: '取消回复',
+                        onPressed: () => setState(() => _replyingTo = null),
+                        icon: const Icon(Icons.close, size: 18),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton(
-                onPressed: _sending ? null : _sendComment,
-                child: const Text('发送'),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _commentController,
+                      maxLength: 500,
+                      onSubmitted: (_) => _sendComment(),
+                      decoration: InputDecoration(
+                        counterText: '',
+                        hintText: _replyingTo == null
+                            ? '写下你的评论…'
+                            : '回复 ${_replyingTo!.author}…',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: _sending ? null : _sendComment,
+                    child: const Text('发送'),
+                  ),
+                ],
               ),
             ],
           ),

@@ -4,8 +4,13 @@ from typing import Optional
 
 import jwt
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
+from app.core.database import SessionLocal
+from app.core.exceptions import AppException
+from app.repositories.ai_room_repository import AiRoomRepository
+from app.services.ai_room_service import LiveChatHistoryService, room_bot_director
 from app.services.realtime_service import event_time, room_realtime_hub, user_realtime_hub
 
 router = APIRouter(tags=["realtime"])
@@ -83,6 +88,8 @@ async def room_websocket(
             "sentAt": event_time(),
         },
     )
+    # 进房欢迎只是一种低频氛围事件；它在后台运行且不阻塞 WebSocket 建连。
+    asyncio.create_task(room_bot_director.on_human_join(room_id=room_id, user_name=username))
     try:
         while True:
             # 客户端每条消息都重新解析和校验，不能信任客户端传来的用户名或房间号。
@@ -95,16 +102,39 @@ async def room_websocket(
             if not message or len(message) > 200:
                 await websocket.send_json({"type": "error", "message": "弹幕长度需为 1-200 个字符"})
                 continue
+            try:
+                with SessionLocal() as db:
+                    saved = LiveChatHistoryService(AiRoomRepository(db)).save_human_message(
+                        room_id=room_id,
+                        user_id=user_id,
+                        body=message,
+                    )
+            except AppException as exc:
+                await websocket.send_json({"type": "error", "message": exc.message})
+                continue
+            except SQLAlchemyError:
+                # 历史写入失败时不能把临时消息伪装成已送达；提示客户端重试。
+                await websocket.send_json({"type": "error", "message": "弹幕发送失败，请稍后重试"})
+                continue
             await room_realtime_hub.publish(
                 room_id,
                 {
                     "type": "chat",
                     "roomId": room_id,
+                    "id": saved.id,
                     "userId": user_id,
                     "userName": username,
                     "message": message,
-                    "sentAt": event_time(),
+                    "isVirtual": False,
+                    "sentAt": event_time(saved.created_at),
                 },
+            )
+            asyncio.create_task(
+                room_bot_director.on_human_chat(
+                    room_id=room_id,
+                    user_name=username,
+                    message=message,
+                )
             )
     except (WebSocketDisconnect, json.JSONDecodeError):
         pass

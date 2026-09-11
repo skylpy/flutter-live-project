@@ -7,7 +7,7 @@ Create Date: 2026-09-05
 
 import sqlalchemy as sa
 
-from alembic import op
+from alembic import context, op
 
 revision = "0003_stream_fields"
 down_revision = "0002_create_users"
@@ -17,6 +17,18 @@ depends_on = None
 
 def upgrade() -> None:
     """旧房间先填空字符串，新创建房间由 Service 生成真实地址。"""
+    # ``--sql`` 使用 MockConnection，不能反射已有列；从 0002 开始生成
+    # 的空数据库必然没有这两列，因此离线模式可安全地直接输出 DDL。
+    if context.is_offline_mode():
+        op.add_column(
+            "live_rooms",
+            sa.Column("push_url", sa.String(length=1000), nullable=False, server_default=""),
+        )
+        op.add_column(
+            "live_rooms",
+            sa.Column("stream_name", sa.String(length=255), nullable=False, server_default=""),
+        )
+        return
     # MySQL 的 DDL 不参与事务。上一次如果已成功加列、但在写入 alembic
     # 版本号时失败，重复执行迁移不能再次 add column。
     existing_columns = {

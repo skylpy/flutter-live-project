@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -8,7 +9,7 @@ class FeedMediaResponse(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    file_id: int = Field(serialization_alias="fileId")
+    file_id: Optional[int] = Field(default=None, serialization_alias="fileId")
     media_type: str = Field(serialization_alias="mediaType")
     url: str
 
@@ -21,6 +22,9 @@ class FeedCommentResponse(BaseModel):
     author: str
     body: str
     time_label: str = Field(serialization_alias="timeLabel")
+    parent_id: Optional[int] = Field(default=None, serialization_alias="parentId")
+    reply_to_author: Optional[str] = Field(default=None, serialization_alias="replyToAuthor")
+    is_virtual: bool = Field(default=False, serialization_alias="isVirtual")
 
 
 class FeedPostResponse(BaseModel):
@@ -43,6 +47,7 @@ class FeedPostResponse(BaseModel):
         default_factory=list, serialization_alias="commentsPreview"
     )
     can_delete: bool = Field(default=False, serialization_alias="canDelete")
+    is_virtual: bool = Field(default=False, serialization_alias="isVirtual")
 
 
 class CreateFeedPostRequest(BaseModel):
@@ -57,6 +62,7 @@ class CreateFeedPostRequest(BaseModel):
 
 class CreateFeedCommentRequest(BaseModel):
     body: str = Field(min_length=1, max_length=500)
+    parent_id: Optional[int] = Field(default=None, ge=1)
 
 
 class PublicFeedProfileResponse(BaseModel):
@@ -110,6 +116,7 @@ class DirectMessageResponse(BaseModel):
     is_mine: bool = Field(serialization_alias="isMine")
     time_label: str = Field(serialization_alias="timeLabel")
     media: list[MessageMediaResponse] = Field(default_factory=list)
+    is_virtual: bool = Field(default=False, serialization_alias="isVirtual")
 
 
 class NotificationResponse(BaseModel):

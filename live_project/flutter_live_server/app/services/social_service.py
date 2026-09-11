@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.core.config import settings
 from app.core.exceptions import AppException, NotFoundException
 from app.models.file import FileRecord
 from app.models.live_room import LiveRoom
@@ -82,8 +83,8 @@ class SocialService:
     def list_comments(self, post_id: int, user: User) -> list[FeedCommentResponse]:
         self.get_post(post_id, user)
         return [
-            self._comment_response(comment, author)
-            for comment, author in self.repository.list_comments(post_id)
+            self._comment_response(comment, author, reply_author)
+            for comment, author, reply_author in self.repository.list_comments(post_id)
         ]
 
     def create_comment(
@@ -95,7 +96,12 @@ class SocialService:
         body = payload.body.strip()
         if not body:
             raise AppException("评论内容不能为空", 40056, 400)
-        comment = self.repository.create_comment(result[0], user.id, body)
+        parent_id = payload.parent_id
+        if parent_id is not None:
+            parent = self.repository.get_comment(parent_id)
+            if parent is None or parent.post_id != post_id:
+                raise AppException("回复的评论不存在", 40413, 404)
+        comment = self.repository.create_comment(result[0], user.id, body, parent_id=parent_id)
         return self._comment_response(comment, user)
 
     def delete_post(self, post_id: int, user: User) -> None:
@@ -105,7 +111,7 @@ class SocialService:
         post, _, _, media, _ = result
         if post.author_id != user.id:
             raise AppException("只能删除自己发布的动态", 40342, 403)
-        files = [file for _, file in media]
+        files = [file for _, file in media if file is not None]
         for file in files:
             self.oss.delete_object(file.object_key)
         self.repository.delete_post(post, files)
@@ -144,8 +150,8 @@ class SocialService:
         post,
         author: User,
         liked: bool,
-        media: list[tuple[object, FileRecord]],
-        comments: list[tuple[object, User]],
+        media: list[tuple[object, FileRecord | None]],
+        comments: list[tuple[object, User, User | None]],
         viewer_id: int,
     ) -> FeedPostResponse:
         return FeedPostResponse(
@@ -161,26 +167,44 @@ class SocialService:
             media_kind=post.media_kind,
             media=[
                 FeedMediaResponse(
-                    file_id=file.id,
+                    file_id=file.id if file is not None else None,
                     media_type=link.media_type,
-                    url=self.oss.generate_download_url(file.object_key),
+                    url=(
+                        self.oss.generate_download_url(file.object_key)
+                        if file is not None
+                        else self._static_media_url(link.source_url)
+                    ),
                 )
                 for link, file in media
             ],
             comments_preview=[
-                self._comment_response(comment, comment_author)
-                for comment, comment_author in comments
+                self._comment_response(comment, comment_author, reply_author)
+                for comment, comment_author, reply_author in comments
             ],
             can_delete=post.author_id == viewer_id,
+            is_virtual=bool(getattr(author, "is_virtual", False)),
         )
 
-    def _comment_response(self, comment, author: User) -> FeedCommentResponse:
+    @staticmethod
+    def _static_media_url(source_url: str | None) -> str:
+        if not source_url:
+            return ""
+        if source_url.startswith(("http://", "https://")):
+            return source_url
+        return f"{settings.app_public_base_url.rstrip('/')}/{source_url.lstrip('/')}"
+
+    def _comment_response(
+        self, comment, author: User, reply_author: User | None = None
+    ) -> FeedCommentResponse:
         return FeedCommentResponse(
             id=comment.id,
             author_id=author.id,
             author=author.display_name,
             body=comment.body,
             time_label=format_time_label(comment.created_at),
+            parent_id=comment.parent_id,
+            reply_to_author=reply_author.display_name if reply_author is not None else None,
+            is_virtual=bool(getattr(author, "is_virtual", False)),
         )
 
     def toggle_feed_like(self, post_id: int, user: User) -> ToggleInteractionResponse:
@@ -264,6 +288,9 @@ class SocialService:
                 )
                 for link, file in media
             ],
+            is_virtual=bool(
+                (sender := self.repository.db.get(User, message.sender_id)) and sender.is_virtual
+            ),
         )
 
     def mark_conversation_read(self, user: User, other_user_id: int) -> None:

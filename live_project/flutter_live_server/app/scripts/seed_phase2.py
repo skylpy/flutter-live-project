@@ -4,7 +4,7 @@
 是否已经写入过，因此重复执行不会不断制造重复动态或消息。
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
@@ -21,7 +21,7 @@ def seed() -> None:
             raise RuntimeError("数据库中还没有用户，请先注册一个账号")
 
         author = users[0]
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         bodies = [
             "[Phase2 验收] 今天的直播间已经接入真实动态 Repository。",
             "[Phase2 验收] 点赞会写入数据库，刷新后仍然保留状态。",

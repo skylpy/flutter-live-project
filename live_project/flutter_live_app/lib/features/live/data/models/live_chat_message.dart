@@ -9,6 +9,9 @@ class LiveChatMessage {
     required this.userName,
     this.event,
     this.onlineCount,
+    this.isVirtual = false,
+    this.virtualRole,
+    this.aiGenerated = false,
     this.gift,
   });
 
@@ -17,6 +20,11 @@ class LiveChatMessage {
   final String userName;
   final String? event;
   final int? onlineCount;
+
+  /// 虚拟居民的身份由服务端签发，客户端不接受发送端伪造该字段。
+  final bool isVirtual;
+  final String? virtualRole;
+  final bool aiGenerated;
   final LiveGiftEvent? gift;
 
   factory LiveChatMessage.fromJson(Map<String, Object?> json) {
@@ -28,6 +36,10 @@ class LiveChatMessage {
       userName: json['userName'] as String? ?? '',
       event: json['event'] as String?,
       onlineCount: rawCount is int ? rawCount : int.tryParse('$rawCount'),
+      isVirtual: json['isVirtual'] == true || json['is_virtual'] == true,
+      virtualRole:
+          json['virtualRole'] as String? ?? json['virtual_role'] as String?,
+      aiGenerated: json['aiGenerated'] == true || json['ai_generated'] == true,
       gift: rawGift is Map
           ? LiveGiftEvent.fromJson(Map<String, Object?>.from(rawGift))
           : null,

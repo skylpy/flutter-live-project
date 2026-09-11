@@ -62,6 +62,7 @@ class FeedMockRepository implements FeedRepository {
   Future<FeedComment> createComment({
     required int postId,
     required String body,
+    int? parentId,
   }) => throw UnimplementedError();
 
   @override

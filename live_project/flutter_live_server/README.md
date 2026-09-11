@@ -25,6 +25,7 @@ CREATE DATABASE flutter_live CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```bash
 alembic upgrade head
 python -m app.scripts.seed_live_rooms
+python -m app.scripts.seed_virtual_residents
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -41,6 +42,12 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - Swagger：`/docs`
 
 实时通道说明：房间 WebSocket 负责弹幕和在线人数；用户通知 WebSocket 负责私信、关注、点赞和全部已读事件。两条连接都使用 JWT 查询参数，客户端断线后自动指数退避重连。历史通知和消息仍以 MySQL REST 接口为准，Redis 不可用时服务端会退回当前进程内广播。
+
+## 虚拟居民与 DeepSeek
+
+执行迁移和 `python -m app.scripts.seed_virtual_residents` 后，会创建一组标识为“虚拟”的社区角色及其初始文字动态。把 `DEEPSEEK_API_KEY` 填入本目录 `.env`，再重启 FastAPI，直播间会在真人进房或发言时由房间导演低频触发角色回应；没有密钥时不会发起任何模型请求，也不会影响正常弹幕。
+
+密钥只允许保存在服务端环境变量或 `.env`，不能提交到 Git，不能写入 Flutter 的 `--dart-define`、App 配置或客户端日志。虚拟居民消息会带 `isVirtual` 字段，客户端会展示其身份。
 
 ## OSS 文件上传、下载与删除
 

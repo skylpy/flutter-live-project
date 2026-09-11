@@ -395,6 +395,14 @@ class _ChatBubble extends StatelessWidget {
                   ? CrossAxisAlignment.end
                   : CrossAxisAlignment.start,
               children: [
+                if (!mine && message.isVirtual)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 3),
+                    child: Text(
+                      '虚拟居民',
+                      style: TextStyle(color: tokens.primary, fontSize: 10),
+                    ),
+                  ),
                 DecoratedBox(
                   decoration: BoxDecoration(
                     color: mine ? tokens.primary : tokens.surface,

@@ -1,6 +1,6 @@
 """添加测试钱包、不可变流水和直播礼物。"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import sqlalchemy as sa
 
@@ -64,7 +64,7 @@ def upgrade() -> None:
     )
     op.create_index("ix_gift_catalog_is_active", "gift_catalog", ["is_active"])
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     gifts = sa.table(
         "gift_catalog",
         sa.column("id", sa.BigInteger()),

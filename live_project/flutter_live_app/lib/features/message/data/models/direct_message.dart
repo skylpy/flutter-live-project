@@ -8,6 +8,7 @@ class DirectMessage {
     required this.isMine,
     required this.timeLabel,
     this.media = const [],
+    this.isVirtual = false,
   });
 
   final int id;
@@ -17,6 +18,7 @@ class DirectMessage {
   final bool isMine;
   final String timeLabel;
   final List<DirectMessageMedia> media;
+  final bool isVirtual;
 
   factory DirectMessage.fromJson(Map<String, Object?> json) => DirectMessage(
     id: _asInt(json['id']),
@@ -32,6 +34,7 @@ class DirectMessage {
               DirectMessageMedia.fromJson(Map<String, Object?>.from(item)),
         )
         .toList(growable: false),
+    isVirtual: json['isVirtual'] == true || json['is_virtual'] == true,
   );
 
   static int _asInt(Object? value) =>

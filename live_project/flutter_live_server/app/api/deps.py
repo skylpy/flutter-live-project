@@ -6,9 +6,11 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.repositories.ai_room_repository import AiRoomRepository
 from app.repositories.live_room_repository import LiveRoomRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.wallet_repository import WalletRepository
+from app.services.ai_room_service import LiveChatHistoryService
 from app.services.auth_service import AuthService
 from app.services.live_room_service import LiveRoomService
 from app.services.wallet_service import WalletService
@@ -20,6 +22,13 @@ bearer_scheme = HTTPBearer(auto_error=False)
 def get_live_room_service(db: Session = Depends(get_db)) -> LiveRoomService:
     """组装直播房间 Service，供路由通过 Depends 注入。"""
     return LiveRoomService(LiveRoomRepository(db))
+
+
+def get_live_chat_history_service(
+    db: Session = Depends(get_db),
+) -> LiveChatHistoryService:
+    """组装直播弹幕历史服务。"""
+    return LiveChatHistoryService(AiRoomRepository(db))
 
 
 def get_auth_service(db: Session = Depends(get_db)) -> AuthService:

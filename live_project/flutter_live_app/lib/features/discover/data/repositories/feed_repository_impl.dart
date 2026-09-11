@@ -26,7 +26,9 @@ class FeedRepositoryImpl implements FeedRepository {
   Future<FeedComment> createComment({
     required int postId,
     required String body,
-  }) => _dataSource.createComment(postId: postId, body: body);
+    int? parentId,
+  }) =>
+      _dataSource.createComment(postId: postId, body: body, parentId: parentId);
 
   @override
   Future<void> deletePost(int postId) => _dataSource.deletePost(postId);

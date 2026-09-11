@@ -55,10 +55,13 @@ class FeedRemoteDataSource {
   Future<FeedComment> createComment({
     required int postId,
     required String body,
+    int? parentId,
   }) async {
+    final data = <String, Object?>{'body': body};
+    if (parentId != null) data['parent_id'] = parentId;
     final response = await _apiClient.post<FeedComment>(
       '/feed/posts/$postId/comments',
-      data: {'body': body},
+      data: data,
       parseData: (value) =>
           FeedComment.fromJson(Map<String, Object?>.from(value as Map)),
     );

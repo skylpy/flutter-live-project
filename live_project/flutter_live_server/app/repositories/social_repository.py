@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy import and_, delete, desc, func, or_, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.models.file import FileRecord
 from app.models.live_room import LiveRoom
@@ -69,12 +69,12 @@ class SocialRepository:
 
     def _media_by_post(
         self, post_ids: list[int]
-    ) -> dict[int, list[tuple[FeedPostMedia, FileRecord]]]:
+    ) -> dict[int, list[tuple[FeedPostMedia, FileRecord | None]]]:
         if not post_ids:
             return {}
         rows = self.db.execute(
             select(FeedPostMedia, FileRecord)
-            .join(FileRecord, FileRecord.id == FeedPostMedia.file_id)
+            .outerjoin(FileRecord, FileRecord.id == FeedPostMedia.file_id)
             .where(FeedPostMedia.post_id.in_(post_ids))
             .order_by(FeedPostMedia.sort_order.asc())
         ).all()
@@ -125,25 +125,64 @@ class SocialRepository:
         self.db.refresh(post)
         return post
 
+    def create_virtual_post(
+        self,
+        *,
+        author_id: int,
+        body: str,
+        media_sources: list[tuple[str, str]],
+    ) -> FeedPost:
+        """创建仅由服务端受控静态媒体组成的虚拟居民动态。"""
+        post = FeedPost(
+            author_id=author_id,
+            body=body,
+            media_kind=media_sources[0][1] if media_sources else "none",
+            likes_count=0,
+            comments_count=0,
+            shares_count=0,
+            created_at=_utcnow(),
+            updated_at=_utcnow(),
+        )
+        self.db.add(post)
+        self.db.flush()
+        for order, (source_url, media_type) in enumerate(media_sources):
+            self.db.add(
+                FeedPostMedia(
+                    post_id=post.id,
+                    file_id=None,
+                    source_url=source_url,
+                    media_type=media_type,
+                    sort_order=order,
+                    created_at=_utcnow(),
+                )
+            )
+        self.db.commit()
+        self.db.refresh(post)
+        return post
+
     def post_media(self, post_id: int) -> list[tuple[FeedPostMedia, FileRecord]]:
         return self._media_by_post([post_id]).get(post_id, [])
 
     def _comment_preview_by_post(
         self, post_ids: list[int]
-    ) -> dict[int, list[tuple[FeedComment, User]]]:
+    ) -> dict[int, list[tuple[FeedComment, User, User | None]]]:
         if not post_ids:
             return {}
+        parent_comment = aliased(FeedComment)
+        reply_author = aliased(User)
         rows = self.db.execute(
-            select(FeedComment, User)
+            select(FeedComment, User, reply_author)
             .join(User, User.id == FeedComment.author_id)
+            .outerjoin(parent_comment, FeedComment.parent_id == parent_comment.id)
+            .outerjoin(reply_author, reply_author.id == parent_comment.author_id)
             .where(FeedComment.post_id.in_(post_ids))
             .order_by(FeedComment.post_id, desc(FeedComment.created_at), desc(FeedComment.id))
         ).all()
-        grouped: dict[int, list[tuple[FeedComment, User]]] = {}
-        for comment, author in rows:
+        grouped: dict[int, list[tuple[FeedComment, User, User | None]]] = {}
+        for comment, author, target_author in rows:
             comments = grouped.setdefault(comment.post_id, [])
             if len(comments) < 3:
-                comments.append((comment, author))
+                comments.append((comment, author, target_author))
         for comments in grouped.values():
             comments.reverse()
         return grouped
@@ -158,19 +197,31 @@ class SocialRepository:
             return None
         return self._post_rows([row], user_id)[0]
 
-    def list_comments(self, post_id: int) -> list[tuple[FeedComment, User]]:
+    def list_comments(self, post_id: int) -> list[tuple[FeedComment, User, User | None]]:
+        parent_comment = aliased(FeedComment)
+        reply_author = aliased(User)
         return self.db.execute(
-            select(FeedComment, User)
+            select(FeedComment, User, reply_author)
             .join(User, User.id == FeedComment.author_id)
+            .outerjoin(parent_comment, FeedComment.parent_id == parent_comment.id)
+            .outerjoin(reply_author, reply_author.id == parent_comment.author_id)
             .where(FeedComment.post_id == post_id)
             .order_by(FeedComment.created_at.asc(), FeedComment.id.asc())
         ).all()
 
-    def create_comment(self, post: FeedPost, author_id: int, body: str) -> FeedComment:
+    def create_comment(
+        self,
+        post: FeedPost,
+        author_id: int,
+        body: str,
+        *,
+        parent_id: int | None = None,
+    ) -> FeedComment:
         comment = FeedComment(
             post_id=post.id,
             author_id=author_id,
             body=body,
+            parent_id=parent_id,
             created_at=_utcnow(),
         )
         self.db.add(comment)
@@ -179,6 +230,32 @@ class SocialRepository:
         self.db.commit()
         self.db.refresh(comment)
         return comment
+
+    def get_comment(self, comment_id: int) -> FeedComment | None:
+        return self.db.get(FeedComment, comment_id)
+
+    def recent_direct_messages(
+        self, user_id: int, other_user_id: int, *, limit: int
+    ) -> list[tuple[DirectMessage, User]]:
+        rows = self.db.execute(
+            select(DirectMessage, User)
+            .join(User, User.id == DirectMessage.sender_id)
+            .where(
+                or_(
+                    and_(
+                        DirectMessage.sender_id == user_id,
+                        DirectMessage.recipient_id == other_user_id,
+                    ),
+                    and_(
+                        DirectMessage.sender_id == other_user_id,
+                        DirectMessage.recipient_id == user_id,
+                    ),
+                )
+            )
+            .order_by(desc(DirectMessage.created_at), desc(DirectMessage.id))
+            .limit(limit)
+        ).all()
+        return list(reversed(rows))
 
     def get_public_feed_profile(
         self, user_id: int, viewer_id: int

@@ -10,6 +10,7 @@ from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 from app.core.config import settings
+from app.models.ai import LiveChatMessage, VirtualResidentProfile  # noqa: F401
 from app.models.base import Base
 from app.models.file import FileRecord  # noqa: F401
 from app.models.live_room import LiveRoom  # noqa: F401 - registers model metadata

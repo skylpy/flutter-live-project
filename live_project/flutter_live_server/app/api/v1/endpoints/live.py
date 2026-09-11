@@ -1,18 +1,25 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, Query
 
-from app.api.deps import get_current_user, get_live_room_service, get_optional_current_user
+from app.api.deps import (
+    get_current_user,
+    get_live_chat_history_service,
+    get_live_room_service,
+    get_optional_current_user,
+)
 from app.api.deps_social import get_social_service
 from app.models.user import User
+from app.schemas.ai import LiveChatHistoryResponse
 from app.schemas.common import ApiResponse, success
 from app.schemas.live_room import (
     CreateLiveRoomRequest,
     LiveRoomHostResponse,
     LiveRoomResponse,
 )
-from app.services.realtime_service import event_time, room_realtime_hub
+from app.services.ai_room_service import LiveChatHistoryService
 from app.services.live_room_service import LiveRoomService
+from app.services.realtime_service import event_time, room_realtime_hub
 from app.services.social_service import SocialService
 
 router = APIRouter(prefix="/live", tags=["live"])
@@ -59,6 +66,20 @@ def get_live_room_detail(
         )
     )
     return success(response)
+
+
+@router.get(
+    "/rooms/{room_id}/chat/messages",
+    response_model=ApiResponse[list[LiveChatHistoryResponse]],
+)
+def get_live_chat_history(
+    room_id: int = Path(..., ge=1),
+    limit: int = Query(default=60, ge=1, le=120),
+    service: LiveChatHistoryService = Depends(get_live_chat_history_service),
+    _: User = Depends(get_current_user),
+) -> ApiResponse[list[LiveChatHistoryResponse]]:
+    """用户重新进入同一房间时回填公开弹幕；只返回有限最近记录。"""
+    return success(service.list_history(room_id, limit=limit))
 
 
 @router.post("/rooms/{room_id}/start", response_model=ApiResponse[LiveRoomHostResponse])

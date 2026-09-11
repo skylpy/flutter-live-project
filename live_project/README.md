@@ -1,6 +1,6 @@
 # Flutter Live 项目
 
-新人阅读入口：先看 [ARCHITECTURE.md](ARCHITECTURE.md)，再沿着文档中的链路阅读源码。业务源码已补充中文注释，说明每个层的职责、调用原因和资源释放方式。
+新人阅读入口：先看 [ARCHITECTURE.md](ARCHITECTURE.md)，再沿着文档中的链路阅读源码。开始开发或协作前，还应阅读 [AGENTS.md](AGENTS.md)、[CONTRIBUTING.md](CONTRIBUTING.md) 和 [STYLEGUIDE.md](STYLEGUIDE.md)。业务源码已补充中文注释，说明每个层的职责、调用原因和资源释放方式。
 
 前后端分离的跨平台直播 App 基础项目。当前目录就是正式源码根目录，Android
 Studio 和 Flutter 命令都应从这里进入，不要再打开上一级的同名备份目录：

@@ -179,6 +179,10 @@ class UserRealtimeHub:
 user_realtime_hub = UserRealtimeHub()
 
 
-def event_time() -> str:
+def event_time(at: Optional[datetime] = None) -> str:
     """生成统一的 UTC ISO 时间戳。"""
-    return datetime.now(timezone.utc).isoformat()
+    if at is None:
+        return datetime.now(timezone.utc).isoformat()
+    return (
+        at.replace(tzinfo=timezone.utc) if at.tzinfo is None else at.astimezone(timezone.utc)
+    ).isoformat()

@@ -72,6 +72,7 @@ class _LiveDanmakuListState extends State<LiveDanmakuList> {
                     : '${item.userName}${item.event == 'joined' ? '进入直播间' : '离开直播间'}',
                 system: item.type != 'chat' && item.type != 'gift',
                 gift: item.type == 'gift',
+                virtual: item.isVirtual,
               ),
             );
           },
@@ -87,12 +88,14 @@ class _LiveDanmakuLine extends StatelessWidget {
     required this.message,
     required this.system,
     required this.gift,
+    required this.virtual,
   });
 
   final String name;
   final String message;
   final bool system;
   final bool gift;
+  final bool virtual;
 
   @override
   Widget build(BuildContext context) {
@@ -115,7 +118,7 @@ class _LiveDanmakuLine extends StatelessWidget {
                   TextSpan(
                     children: [
                       TextSpan(
-                        text: '$name：',
+                        text: virtual ? '$name · 虚拟：' : '$name：',
                         // 昵称随 App 当前主题变色；礼物内容仍以金色突出。
                         style: TextStyle(
                           color: themePrimary,

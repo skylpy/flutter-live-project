@@ -16,6 +16,7 @@ class FeedPost {
     this.media = const [],
     this.commentsPreview = const [],
     this.canDelete = false,
+    this.isVirtual = false,
   });
 
   final int id;
@@ -31,6 +32,7 @@ class FeedPost {
   final List<FeedMedia> media;
   final List<FeedComment> commentsPreview;
   final bool canDelete;
+  final bool isVirtual;
 
   factory FeedPost.fromJson(Map<String, Object?> json) {
     return FeedPost(
@@ -63,6 +65,7 @@ class FeedPost {
                 .toList(growable: false)
           : const [],
       canDelete: json['canDelete'] == true || json['can_delete'] == true,
+      isVirtual: json['isVirtual'] == true || json['is_virtual'] == true,
     );
   }
 
@@ -76,6 +79,7 @@ class FeedPost {
     int? likes,
     int? comments,
     List<FeedComment>? commentsPreview,
+    bool? isVirtual,
   }) {
     return FeedPost(
       id: id,
@@ -91,6 +95,7 @@ class FeedPost {
       media: media,
       commentsPreview: commentsPreview ?? this.commentsPreview,
       canDelete: canDelete,
+      isVirtual: isVirtual ?? this.isVirtual,
     );
   }
 }
@@ -102,6 +107,9 @@ class FeedComment {
     required this.author,
     required this.body,
     required this.timeLabel,
+    this.parentId,
+    this.replyToAuthor,
+    this.isVirtual = false,
   });
 
   final int id;
@@ -109,6 +117,9 @@ class FeedComment {
   final String author;
   final String body;
   final String timeLabel;
+  final int? parentId;
+  final String? replyToAuthor;
+  final bool isVirtual;
 
   factory FeedComment.fromJson(Map<String, Object?> json) => FeedComment(
     id: FeedPost._asInt(json['id']),
@@ -116,6 +127,15 @@ class FeedComment {
     author: FeedPost._asString(json['author']),
     body: FeedPost._asString(json['body']),
     timeLabel: FeedPost._asString(json['timeLabel'] ?? json['time_label']),
+    parentId: (json['parentId'] ?? json['parent_id']) == null
+        ? null
+        : FeedPost._asInt(json['parentId'] ?? json['parent_id']),
+    replyToAuthor:
+        FeedPost._asString(json['replyToAuthor'] ?? json['reply_to_author'])
+            .isEmpty
+        ? null
+        : FeedPost._asString(json['replyToAuthor'] ?? json['reply_to_author']),
+    isVirtual: json['isVirtual'] == true || json['is_virtual'] == true,
   );
 }
 

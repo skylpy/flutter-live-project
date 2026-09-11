@@ -13,6 +13,7 @@ abstract interface class FeedRepository {
   Future<FeedComment> createComment({
     required int postId,
     required String body,
+    int? parentId,
   });
 
   Future<void> deletePost(int postId);

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends, Path, Query
 
 from app.api.deps import get_current_user, get_live_room_service
@@ -22,6 +24,7 @@ from app.schemas.social import (
     ToggleInteractionResponse,
     UpdateProfileRequest,
 )
+from app.services.ai_social_service import social_bot_director
 from app.services.live_room_service import LiveRoomService
 from app.services.realtime_service import event_time, user_realtime_hub
 from app.services.social_service import SocialService
@@ -49,13 +52,16 @@ def list_feed_posts(
 
 
 @router.post("/feed/posts", response_model=ApiResponse[FeedPostResponse], status_code=201)
-def create_feed_post(
+async def create_feed_post(
     payload: CreateFeedPostRequest,
     user: User = Depends(get_current_user),
     service: SocialService = Depends(get_social_service),
 ) -> ApiResponse[FeedPostResponse]:
     """发布一条动态；附件必须是当前用户已经完成直传的图片或视频。"""
-    return success(service.create_post(payload, user), message="动态已发布")
+    post = service.create_post(payload, user)
+    if not getattr(user, "is_virtual", False):
+        asyncio.create_task(social_bot_director.on_human_post(post_id=post.id, author_id=user.id))
+    return success(post, message="动态已发布")
 
 
 @router.get("/feed/posts/{post_id}", response_model=ApiResponse[FeedPostResponse])
@@ -91,13 +97,18 @@ def list_feed_comments(
     response_model=ApiResponse[FeedCommentResponse],
     status_code=201,
 )
-def create_feed_comment(
+async def create_feed_comment(
     payload: CreateFeedCommentRequest,
     post_id: int = Path(..., ge=1),
     user: User = Depends(get_current_user),
     service: SocialService = Depends(get_social_service),
 ) -> ApiResponse[FeedCommentResponse]:
-    return success(service.create_comment(post_id, payload, user), message="评论已发布")
+    comment = service.create_comment(post_id, payload, user)
+    if not getattr(user, "is_virtual", False):
+        asyncio.create_task(
+            social_bot_director.on_human_comment(post_id=post_id, comment_id=comment.id)
+        )
+    return success(comment, message="评论已发布")
 
 
 @router.get("/feed/users/{user_id}", response_model=ApiResponse[PublicFeedProfileResponse])
@@ -203,6 +214,14 @@ async def send_message(
             "message": recipient_message.model_dump(by_alias=True),
             "sentAt": event_time(),
         },
+    )
+    # 收件人若是虚拟居民，会在服务端读完最近上下文后延迟回复；失败不会影响本条发送。
+    asyncio.create_task(
+        social_bot_director.on_human_direct_message(
+            sender_id=user.id,
+            recipient_id=payload.recipient_id,
+            message=result.body,
+        )
     )
     return success(result, message="消息已发送")
 

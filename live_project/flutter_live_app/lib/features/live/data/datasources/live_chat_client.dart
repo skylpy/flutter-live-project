@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../../../core/config/environment.dart';
@@ -23,6 +24,7 @@ class LiveChatClient {
   bool _manualDisconnect = true;
   bool _connecting = false;
   bool _disposed = false;
+  bool _historyLoaded = false;
   int _reconnectAttempt = 0;
   LiveChatConnectionState _state = LiveChatConnectionState.disconnected;
 
@@ -33,11 +35,38 @@ class LiveChatClient {
   LiveChatConnectionState get state => _state;
 
   Future<void> connect(String roomId, String token) async {
+    if (_roomId != roomId) _historyLoaded = false;
     _roomId = roomId;
     _token = token;
     _manualDisconnect = false;
     _reconnectAttempt = 0;
+    await _loadHistoryIfNeeded(roomId, token);
     await _connectOnce();
+  }
+
+  Future<void> _loadHistoryIfNeeded(String roomId, String token) async {
+    if (_historyLoaded || _disposed) return;
+    _historyLoaded = true;
+    try {
+      final response = await Dio(
+        BaseOptions(
+          baseUrl: Environment.apiBaseUrl,
+          connectTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 10),
+          headers: <String, Object>{'Authorization': 'Bearer $token'},
+        ),
+      ).get<Object?>('/live/rooms/$roomId/chat/messages');
+      final envelope = response.data;
+      if (envelope is! Map || envelope['data'] is! List) return;
+      for (final raw in envelope['data'] as List) {
+        if (_disposed) return;
+        if (raw is! Map) continue;
+        final payload = Map<String, Object?>.from(raw)..['type'] = 'chat';
+        _messagesController.add(LiveChatMessage.fromJson(payload));
+      }
+    } on DioException {
+      // 历史请求不应该阻塞实时连接；网络恢复后 WebSocket 仍可正常收新弹幕。
+    }
   }
 
   void sendMessage(String message) {

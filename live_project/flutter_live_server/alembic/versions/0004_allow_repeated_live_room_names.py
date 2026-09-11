@@ -7,7 +7,7 @@ Create Date: 2026-09-05
 
 import sqlalchemy as sa
 
-from alembic import op
+from alembic import context, op
 
 revision = "0004_allow_repeated_names"
 down_revision = "0003_stream_fields"
@@ -23,6 +23,13 @@ def upgrade() -> None:
     MySQL 通常把 ORM 的 UniqueConstraint 落成同名唯一索引，因此优先按
     索引删除；如果某个数据库方言只暴露为约束，则退回 drop_constraint。
     """
+    if context.is_offline_mode():
+        op.drop_constraint(
+            "uq_live_rooms_title_anchor",
+            "live_rooms",
+            type_="unique",
+        )
+        return
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     index_names = {index["name"] for index in inspector.get_indexes("live_rooms")}
